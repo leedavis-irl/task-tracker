@@ -16,8 +16,23 @@ esp32:
   framework:
     type: arduino
 
-# Built-in LED on XIAO ESP32-C6 is GPIO15 (active low)
+# Pi IP address — resolved from substitution (set via !secret in each device yaml)
+text_sensor:
+  - platform: template
+    name: "Pi IP"
+    id: pi_ip
+    lambda: 'return {"${pi_ip}"};'
+    update_interval: never
+
+# RGB LED on XIAO ESP32-C6 (WS2812 on GPIO21)
 light:
+  - platform: neopixelbus
+    type: GRB
+    variant: WS2812X
+    pin: GPIO21
+    num_leds: 1
+    name: "RGB LED"
+    id: rgb_led
   - platform: status_led
     name: "Status LED"
     id: status_led
@@ -25,11 +40,11 @@ light:
       number: GPIO15
       inverted: true
 
-# Onboard button on XIAO ESP32-C6 is BOOT button, GPIO9
+# External tact switch on D1/GPIO3 (active-low with internal pullup)
 binary_sensor:
   - platform: gpio
     pin:
-      number: GPIO9
+      number: GPIO3
       inverted: true
       mode:
         input: true
@@ -41,6 +56,12 @@ binary_sensor:
     on_press:
       then:
         - script.execute: do_press
+
+# Buzzer on D2/GPIO4 — short beep for feedback
+output:
+  - platform: gpio
+    pin: GPIO4
+    id: buzzer_pin
 
 http_request:
   useragent: "ESPHome Task Button"
@@ -61,61 +82,18 @@ script:
                   if (response->status_code == 200) {
                     std::string body(data.begin(), data.end());
                     if (body.find("\"ok\"") != std::string::npos) {
-                      // Success — green flash
-                      id(led_green).turn_on();
-                      delay(300);
-                      id(led_green).turn_off();
+                      // Success — green flash + beep
+                      id(led_green).execute();
+                      id(buzzer_beep).execute();
                     } else if (body.find("\"already_done\"") != std::string::npos) {
                       // Already done — red flash
-                      id(led_red).turn_on();
-                      delay(300);
-                      id(led_red).turn_off();
+                      id(led_red).execute();
                     } else {
-                      // outside_window or not_today — brief double red
-                      id(led_red).turn_on();
-                      delay(150);
-                      id(led_red).turn_off();
-                      delay(100);
-                      id(led_red).turn_on();
-                      delay(150);
-                      id(led_red).turn_off();
+                      // outside_window or not_today — double red flash
+                      id(led_red_double).execute();
                     }
                   }
 
-  - id: run_and_sleep
-    then:
-      - delay: 10s   # max run duration — gives time for button press + HTTP
-      - deep_sleep.enter: deep_sleep_1
-
-deep_sleep:
-  id: deep_sleep_1
-  run_duration: 10s
-  wakeup_pin:
-    number: GPIO9
-    inverted: true
-
-# Pi IP address — pulled from secrets so it's easy to change in one place
-text_sensor:
-  - platform: template
-    name: "Pi IP"
-    id: pi_ip
-    lambda: 'return {!secret pi_ip};'
-    update_interval: never
-
-# Dual-colour LED simulation using the single status LED:
-# We use lambda scripts to blink differently for green vs red feedback.
-# On XIAO C6 there is one addressable LED (WS2812, GPIO21).
-# Use that for colour feedback.
-light:
-  - platform: neopixelbus
-    type: GRB
-    variant: WS2812X
-    pin: GPIO21
-    num_leds: 1
-    name: "RGB LED"
-    id: rgb_led
-
-script:
   - id: led_green
     mode: restart
     then:
@@ -141,3 +119,44 @@ script:
       - delay: 400ms
       - light.turn_off:
           id: rgb_led
+
+  - id: led_red_double
+    mode: restart
+    then:
+      - light.turn_on:
+          id: rgb_led
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 50%
+      - delay: 150ms
+      - light.turn_off:
+          id: rgb_led
+      - delay: 100ms
+      - light.turn_on:
+          id: rgb_led
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 50%
+      - delay: 150ms
+      - light.turn_off:
+          id: rgb_led
+
+  - id: buzzer_beep
+    mode: restart
+    then:
+      - output.turn_on: buzzer_pin
+      - delay: 100ms
+      - output.turn_off: buzzer_pin
+
+  - id: run_and_sleep
+    then:
+      - delay: 10s   # max run duration — gives time for WiFi + button press + HTTP
+      - deep_sleep.enter: deep_sleep_1
+
+deep_sleep:
+  id: deep_sleep_1
+  wakeup_pin:
+    number: GPIO3
+    inverted: true

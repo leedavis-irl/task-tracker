@@ -2,10 +2,10 @@
 server.py — Avalon Task Tracker Pi Server
 ==========================================
 Flask server running on the Raspberry Pi.
-  • Receives button presses from ESPHome devices
-  • Serves current state to the e-ink display
-  • Sends a single daily 9:30 AM Signal summary to the Favalon group
-  • Resets state at 3:00 AM
+  * Receives button presses from ESPHome devices
+  * Serves current state to the e-ink display
+  * Sends a single daily 9:30 AM Signal summary to the Favalon group
+  * Resets state at 3:00 AM
 
 Configuration — edit the TODO lines below, or set env vars.
 """
@@ -13,6 +13,7 @@ Configuration — edit the TODO lines below, or set env vars.
 import json
 import logging
 import os
+import threading
 import time
 from datetime import datetime, date
 from pathlib import Path
@@ -21,7 +22,7 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify, request
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+# -- Configuration ------------------------------------------------------------
 
 # TODO: set EC2_RELAY_URL to your EC2 instance's Signal relay endpoint
 EC2_RELAY_URL = os.environ.get("EC2_RELAY_URL", "http://13.58.219.0:8766/send-signal")
@@ -36,7 +37,7 @@ STATE_FILE = Path(os.environ.get("STATE_FILE", "/var/lib/task-tracker/state.json
 WINDOW_START = (6, 0)    # (hour, minute)
 WINDOW_END   = (9, 30)
 
-# ── Task definitions ──────────────────────────────────────────────────────────
+# -- Task definitions ---------------------------------------------------------
 
 # Tasks that apply every day
 DAILY_TASKS = {
@@ -68,7 +69,10 @@ def wednesday_tasks_today() -> dict[str, list[str]]:
     return {owner: [] for owner in VALID_OWNERS}
 
 
-# ── State helpers ─────────────────────────────────────────────────────────────
+# -- State helpers ------------------------------------------------------------
+
+state_lock = threading.Lock()
+
 
 def _empty_state() -> dict:
     """Return a fresh, zeroed-out state for today."""
@@ -79,12 +83,10 @@ def _empty_state() -> dict:
             owner: {task: False for task in tasks_for_today(owner)}
             for owner in VALID_OWNERS
         },
-        # Track which Wednesday-only tasks are applicable today
         "wednesday_today": {
             owner: wednesday.get(owner, [])
             for owner in VALID_OWNERS
         },
-        # Whether the 9:30 AM summary has been sent today
         "summary_sent": False,
     }
 
@@ -121,7 +123,7 @@ def is_active_window() -> bool:
     return start <= now <= end
 
 
-# ── Signal relay ──────────────────────────────────────────────────────────────
+# -- Signal relay -------------------------------------------------------------
 
 def send_signal(message: str) -> None:
     """POST a message to the EC2 Signal relay. Logs errors but never raises."""
@@ -138,14 +140,15 @@ def send_signal(message: str) -> None:
         logging.error("Failed to send Signal message: %s", exc)
 
 
-# ── Scheduled jobs ────────────────────────────────────────────────────────────
+# -- Scheduled jobs -----------------------------------------------------------
 
 def job_reset() -> None:
     """3:00 AM — wipe state for the new day."""
     logging.info("3 AM reset triggered.")
-    new_state = _empty_state()
-    save_state(new_state)
-    app.config["state"] = new_state
+    with state_lock:
+        new_state = _empty_state()
+        save_state(new_state)
+        app.config["state"] = new_state
 
 
 def job_morning_summary() -> None:
@@ -153,35 +156,35 @@ def job_morning_summary() -> None:
     9:30 AM — send a single Signal summary for both kids.
 
     Format examples:
-      ✅ Ryker done | ✅ Logan done
-      ✅ Ryker done | ⚠️ Logan missed: teeth, plates
-      ⚠️ Ryker missed: pills | ⚠️ Logan missed: teeth, plates
+      Ryker done | Logan done
+      Ryker done | Logan missed: teeth, plates
     """
-    state = app.config["state"]
+    with state_lock:
+        state = app.config["state"]
 
-    if state.get("summary_sent"):
-        logging.info("9:30 AM summary already sent today — skipping.")
-        return
+        if state.get("summary_sent"):
+            logging.info("9:30 AM summary already sent today — skipping.")
+            return
 
-    parts = []
-    for owner in VALID_OWNERS:
-        tasks = state["tasks"].get(owner, {})
-        if all(tasks.values()):
-            parts.append(f"✅ {owner.capitalize()} done")
-        else:
-            missed = [t for t, done in tasks.items() if not done]
-            missed_str = ", ".join(missed)
-            parts.append(f"⚠️ {owner.capitalize()} missed: {missed_str}")
+        parts = []
+        for owner in VALID_OWNERS:
+            tasks = state["tasks"].get(owner, {})
+            if all(tasks.values()):
+                parts.append(f"{owner.capitalize()} done")
+            else:
+                missed = [t for t, done in tasks.items() if not done]
+                missed_str = ", ".join(missed)
+                parts.append(f"{owner.capitalize()} missed: {missed_str}")
+
+        state["summary_sent"] = True
+        save_state(state)
 
     message = " | ".join(parts)
     send_signal(message)
-
-    state["summary_sent"] = True
-    save_state(state)
     logging.info("9:30 AM summary sent.")
 
 
-# ── Flask app ─────────────────────────────────────────────────────────────────
+# -- Flask app ----------------------------------------------------------------
 
 logging.basicConfig(
     level=logging.INFO,
@@ -206,13 +209,6 @@ def press():
     Record a task completion.
 
     Body: {"owner": "ryker", "task": "laundry"}
-
-    Returns:
-      {"status": "ok"}             — recorded
-      {"status": "already_done"}   — was already marked complete
-      {"status": "outside_window"} — outside 6:00–9:30 AM
-      {"status": "not_today"}      — Wednesday-only task on a non-Wednesday
-      {"status": "invalid"}        — bad owner/task
     """
     body = request.get_json(silent=True) or {}
     owner = (body.get("owner") or "").lower().strip()
@@ -221,68 +217,60 @@ def press():
     if owner not in VALID_OWNERS:
         return jsonify({"status": "invalid", "reason": "unknown owner"}), 400
 
-    # Check active window first
     if not is_active_window():
         return jsonify({"status": "outside_window"})
 
-    state = app.config["state"]
-    today_tasks = state["tasks"].get(owner, {})
+    with state_lock:
+        state = app.config["state"]
+        today_tasks = state["tasks"].get(owner, {})
 
-    if task not in today_tasks:
-        # Task not in today's roster — Wednesday-only task on wrong day?
-        all_possible = DAILY_TASKS.get(owner, []) + WEDNESDAY_TASKS.get(owner, [])
-        if task in all_possible:
-            return jsonify({"status": "not_today"})
-        return jsonify({"status": "invalid", "reason": "unknown task"}), 400
+        if task not in today_tasks:
+            all_possible = DAILY_TASKS.get(owner, []) + WEDNESDAY_TASKS.get(owner, [])
+            if task in all_possible:
+                return jsonify({"status": "not_today"})
+            return jsonify({"status": "invalid", "reason": "unknown task"}), 400
 
-    if today_tasks[task]:
-        return jsonify({"status": "already_done"})
+        if today_tasks[task]:
+            return jsonify({"status": "already_done"})
 
-    # Record completion
-    state["tasks"][owner][task] = True
-    save_state(state)
+        state["tasks"][owner][task] = True
+        save_state(state)
+
     logging.info("Recorded: %s / %s", owner, task)
-
     return jsonify({"status": "ok"})
 
 
 @app.route("/state", methods=["GET"])
 def get_state():
-    """
-    Return current task state for the e-ink display.
+    """Return current task state for the e-ink display (flat booleans)."""
+    with state_lock:
+        state = app.config["state"]
+        tasks = state["tasks"]
 
-    The display polls this every 5 seconds and renders from flat booleans
-    to avoid any JSON nesting logic in ESPHome C++ lambdas.
-    """
-    state = app.config["state"]
-    tasks = state["tasks"]
-    wed   = state.get("wednesday_today", {})
+        flat = {
+            "active_window": is_active_window(),
+            "both_done":     all(is_done(state, o) for o in VALID_OWNERS),
 
-    flat = {
-        "active_window": is_active_window(),
-        "both_done":     all(is_done(state, o) for o in VALID_OWNERS),
+            "ryker_laundry":     tasks.get("ryker", {}).get("laundry", False),
+            "ryker_teeth":       tasks.get("ryker", {}).get("teeth",   False),
+            "ryker_plates":      tasks.get("ryker", {}).get("plates",  False),
+            "ryker_pills":       tasks.get("ryker", {}).get("pills",   False),
+            "ryker_flute":       tasks.get("ryker", {}).get("flute",   False),
+            "ryker_flute_today": "flute" in tasks.get("ryker", {}),
+            "ryker_done":        is_done(state, "ryker"),
 
-        # Ryker
-        "ryker_laundry":     tasks.get("ryker", {}).get("laundry", False),
-        "ryker_teeth":       tasks.get("ryker", {}).get("teeth",   False),
-        "ryker_plates":      tasks.get("ryker", {}).get("plates",  False),
-        "ryker_pills":       tasks.get("ryker", {}).get("pills",   False),
-        "ryker_flute":       tasks.get("ryker", {}).get("flute",   False),
-        "ryker_flute_today": "flute" in tasks.get("ryker", {}),
-        "ryker_done":        is_done(state, "ryker"),
+            "logan_laundry":      tasks.get("logan", {}).get("laundry",  False),
+            "logan_teeth":        tasks.get("logan", {}).get("teeth",    False),
+            "logan_plates":       tasks.get("logan", {}).get("plates",   False),
+            "logan_trumpet":      tasks.get("logan", {}).get("trumpet",  False),
+            "logan_trumpet_today": "trumpet" in tasks.get("logan", {}),
+            "logan_done":         is_done(state, "logan"),
+        }
 
-        # Logan
-        "logan_laundry":      tasks.get("logan", {}).get("laundry",  False),
-        "logan_teeth":        tasks.get("logan", {}).get("teeth",    False),
-        "logan_plates":       tasks.get("logan", {}).get("plates",   False),
-        "logan_trumpet":      tasks.get("logan", {}).get("trumpet",  False),
-        "logan_trumpet_today": "trumpet" in tasks.get("logan", {}),
-        "logan_done":         is_done(state, "logan"),
-    }
     return jsonify(flat)
 
 
-# ── Scheduler setup ───────────────────────────────────────────────────────────
+# -- Scheduler setup ----------------------------------------------------------
 
 scheduler = BackgroundScheduler(timezone="America/Los_Angeles")
 scheduler.add_job(job_reset,           "cron", hour=3,  minute=0, id="reset")
@@ -291,7 +279,7 @@ scheduler.start()
 logging.info("Scheduler started (reset @ 3:00 AM, summary @ 9:30 AM Pacific).")
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# -- Entry point --------------------------------------------------------------
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8765, debug=False)
