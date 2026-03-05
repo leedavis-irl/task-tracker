@@ -1,0 +1,8 @@
+substitutions:
+  device_name: button-ryker-teeth
+  owner: ryker
+  task: teeth
+
+packages:
+  common: !include .base-common.yaml
+  button: !include .base-button.yaml

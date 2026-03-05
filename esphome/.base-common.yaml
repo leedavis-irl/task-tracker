@@ -1,0 +1,23 @@
+# .base-common.yaml
+# Shared WiFi, API, OTA, and logging config included by all devices.
+# Referenced via packages: in each device yaml.
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${device_name} Fallback"
+    password: "fallback1234"
+
+captive_portal:
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password

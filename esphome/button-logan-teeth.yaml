@@ -1,0 +1,8 @@
+substitutions:
+  device_name: button-logan-teeth
+  owner: logan
+  task: teeth
+
+packages:
+  common: !include .base-common.yaml
+  button: !include .base-button.yaml

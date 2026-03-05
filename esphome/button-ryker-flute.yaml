@@ -1,0 +1,13 @@
+# Wednesday-only button.
+# The server handles the day-of-week check and returns {"status": "not_today"}
+# on non-Wednesdays. The button firmware is identical to daily buttons —
+# the display will show flute as N/A on non-Wednesdays.
+
+substitutions:
+  device_name: button-ryker-flute
+  owner: ryker
+  task: flute
+
+packages:
+  common: !include .base-common.yaml
+  button: !include .base-button.yaml

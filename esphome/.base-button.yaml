@@ -1,0 +1,143 @@
+# .base-button.yaml
+# Shared config for all Seeed XIAO ESP32-C6 button devices.
+# Each button yaml sets substitutions for: device_name, owner, task
+# then includes this via packages.
+
+esphome:
+  name: "${device_name}"
+  friendly_name: "${device_name}"
+  on_boot:
+    priority: 600
+    then:
+      - script.execute: run_and_sleep
+
+esp32:
+  board: seeed_xiao_esp32c6
+  framework:
+    type: arduino
+
+# Built-in LED on XIAO ESP32-C6 is GPIO15 (active low)
+light:
+  - platform: status_led
+    name: "Status LED"
+    id: status_led
+    pin:
+      number: GPIO15
+      inverted: true
+
+# Onboard button on XIAO ESP32-C6 is BOOT button, GPIO9
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO9
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "Task Button"
+    id: task_button
+    filters:
+      - delayed_on: 50ms   # debounce
+    on_press:
+      then:
+        - script.execute: do_press
+
+http_request:
+  useragent: "ESPHome Task Button"
+  timeout: 5s
+
+script:
+  - id: do_press
+    then:
+      - http_request.post:
+          url: !lambda 'return "http://" + id(pi_ip).state + ":8765/press";'
+          headers:
+            Content-Type: application/json
+          body: !lambda |
+            return "{\"owner\": \"${owner}\", \"task\": \"${task}\"}";
+          on_response:
+            then:
+              - lambda: |-
+                  if (response->status_code == 200) {
+                    std::string body(data.begin(), data.end());
+                    if (body.find("\"ok\"") != std::string::npos) {
+                      // Success — green flash
+                      id(led_green).turn_on();
+                      delay(300);
+                      id(led_green).turn_off();
+                    } else if (body.find("\"already_done\"") != std::string::npos) {
+                      // Already done — red flash
+                      id(led_red).turn_on();
+                      delay(300);
+                      id(led_red).turn_off();
+                    } else {
+                      // outside_window or not_today — brief double red
+                      id(led_red).turn_on();
+                      delay(150);
+                      id(led_red).turn_off();
+                      delay(100);
+                      id(led_red).turn_on();
+                      delay(150);
+                      id(led_red).turn_off();
+                    }
+                  }
+
+  - id: run_and_sleep
+    then:
+      - delay: 10s   # max run duration — gives time for button press + HTTP
+      - deep_sleep.enter: deep_sleep_1
+
+deep_sleep:
+  id: deep_sleep_1
+  run_duration: 10s
+  wakeup_pin:
+    number: GPIO9
+    inverted: true
+
+# Pi IP address — pulled from secrets so it's easy to change in one place
+text_sensor:
+  - platform: template
+    name: "Pi IP"
+    id: pi_ip
+    lambda: 'return {!secret pi_ip};'
+    update_interval: never
+
+# Dual-colour LED simulation using the single status LED:
+# We use lambda scripts to blink differently for green vs red feedback.
+# On XIAO C6 there is one addressable LED (WS2812, GPIO21).
+# Use that for colour feedback.
+light:
+  - platform: neopixelbus
+    type: GRB
+    variant: WS2812X
+    pin: GPIO21
+    num_leds: 1
+    name: "RGB LED"
+    id: rgb_led
+
+script:
+  - id: led_green
+    mode: restart
+    then:
+      - light.turn_on:
+          id: rgb_led
+          red: 0%
+          green: 100%
+          blue: 0%
+          brightness: 50%
+      - delay: 400ms
+      - light.turn_off:
+          id: rgb_led
+
+  - id: led_red
+    mode: restart
+    then:
+      - light.turn_on:
+          id: rgb_led
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 50%
+      - delay: 400ms
+      - light.turn_off:
+          id: rgb_led

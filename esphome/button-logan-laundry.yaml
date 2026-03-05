@@ -1,0 +1,8 @@
+substitutions:
+  device_name: button-logan-laundry
+  owner: logan
+  task: laundry
+
+packages:
+  common: !include .base-common.yaml
+  button: !include .base-button.yaml

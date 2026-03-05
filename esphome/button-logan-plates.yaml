@@ -1,0 +1,8 @@
+substitutions:
+  device_name: button-logan-plates
+  owner: logan
+  task: plates
+
+packages:
+  common: !include .base-common.yaml
+  button: !include .base-button.yaml

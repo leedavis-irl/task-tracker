@@ -1,0 +1,8 @@
+substitutions:
+  device_name: button-ryker-pills
+  owner: ryker
+  task: pills
+
+packages:
+  common: !include .base-common.yaml
+  button: !include .base-button.yaml

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Button Build Guide — AM Routine Tracker</title>
+<style>
+  @media print {
+    body { font-size: 11pt; }
+    h1 { page-break-before: avoid; }
+    h2 { page-break-after: avoid; }
+    table { page-break-inside: avoid; }
+    .checklist { page-break-inside: avoid; }
+    .pagebreak { page-break-before: always; }
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 24px;
+    color: #111;
+    line-height: 1.6;
+  }
+  h1 { font-size: 1.8em; border-bottom: 3px solid #111; padding-bottom: 8px; }
+  h2 { font-size: 1.2em; margin-top: 2em; background: #f0f0f0; padding: 6px 10px; border-left: 4px solid #333; }
+  h3 { font-size: 1em; margin-top: 1.5em; color: #444; }
+  .subtitle { color: #555; font-size: 1em; margin-top: -12px; margin-bottom: 24px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.93em; }
+  th { background: #333; color: white; padding: 6px 10px; text-align: left; }
+  td { padding: 5px 10px; border: 1px solid #ccc; }
+  tr:nth-child(even) { background: #f9f9f9; }
+  code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-family: monospace; font-size: 0.9em; }
+  pre { background: #f0f0f0; padding: 12px; border-radius: 4px; font-size: 0.85em; overflow-x: auto; }
+  blockquote { border-left: 4px solid #f0a000; background: #fffbe6; margin: 12px 0; padding: 8px 14px; border-radius: 0 4px 4px 0; }
+  blockquote.warn { border-left-color: #d00; background: #fff0f0; }
+  ul, ol { padding-left: 1.5em; }
+  li { margin: 4px 0; }
+  .checklist { background: #f8f8f8; border: 1px solid #ccc; border-radius: 6px; padding: 16px 20px; margin: 16px 0; }
+  .checklist pre { background: transparent; padding: 0; margin: 0; }
+  .step-num { display: inline-block; background: #333; color: white; border-radius: 50%; width: 24px; height: 24px; text-align: center; line-height: 24px; font-size: 0.85em; margin-right: 8px; }
+  .build-order { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+  .build-item { background: #f0f0f0; padding: 8px 12px; border-radius: 4px; font-size: 0.9em; }
+  .build-item .num { font-weight: bold; color: #333; }
+  hr { border: none; border-top: 2px solid #eee; margin: 2em 0; }
+</style>
+</head>
+<body>
+
+<h1>🔧 Button Build Guide</h1>
+<div class="subtitle"><strong>AM Routine Tracker — Avalon Household</strong> &nbsp;|&nbsp; Print this. Build one button at a time. Don't skip steps.</div>
+
+<hr>
+
+<h2>Before You Start</h2>
+
+<h3>Tools needed</h3>
+<ul>
+  <li>Soldering iron + solder</li>
+  <li>Wire strippers</li>
+  <li>Multimeter</li>
+  <li>Heat gun (or lighter) for heat shrink</li>
+  <li>USB-C cable (for flashing)</li>
+  <li>Laptop with ESPHome dashboard open</li>
+  <li>Tweezers &amp; isopropyl alcohol + cotton swab</li>
+</ul>
+
+<h3>Parts per button unit</h3>
+<table>
+  <tr><th>Part</th><th>Notes</th></tr>
+  <tr><td>1× Seeed XIAO ESP32-C6</td><td>The brains</td></tr>
+  <tr><td>1× 3.7V 400mAh LiPo (Liter 502035)</td><td>5×20×35mm</td></tr>
+  <tr><td>1× 6×6×5mm tactile pushbutton switch</td><td>4-pin through-hole, momentary</td></tr>
+  <tr><td>1× Passive piezo buzzer (~12mm, 2-pin)</td><td><strong>Passive, NOT active</strong></td></tr>
+  <tr><td>~15cm red + black 22 AWG silicone wire</td><td>For tact switch</td></tr>
+  <tr><td>~10cm red + black 22 AWG silicone wire</td><td>For buzzer</td></tr>
+  <tr><td>2× small heat shrink pieces</td><td>Battery solder joints</td></tr>
+  <tr><td>1× 3D-printed enclosure + plunger</td><td>Print before assembly</td></tr>
+</table>
+
+<h2>GPIO Pin Assignments — Memorize These</h2>
+<table>
+  <tr><th>Function</th><th>XIAO Pin Label</th><th>GPIO #</th></tr>
+  <tr><td>Tact switch input</td><td><strong>D1</strong></td><td>GPIO3</td></tr>
+  <tr><td>Passive buzzer PWM</td><td><strong>D2</strong></td><td>GPIO4</td></tr>
+  <tr><td>Battery positive</td><td><strong>BAT+ pad</strong></td><td>near D5 silkscreen (back of board)</td></tr>
+  <tr><td>Battery negative</td><td><strong>BAT- pad</strong></td><td>near D8 silkscreen (back of board)</td></tr>
+</table>
+
+<div class="pagebreak"></div>
+
+<h2><span class="step-num">1</span> Inspect the XIAO board</h2>
+<ul>
+  <li>☐ No bent pins, no visible damage</li>
+  <li>☐ USB-C port is clean</li>
+  <li>☐ Find the <strong>BAT+</strong> pad on back of board (near D5 label)</li>
+  <li>☐ Find the <strong>BAT-</strong> pad on back of board (near D8 label)</li>
+</ul>
+
+<h2><span class="step-num">2</span> Prep the LiPo battery</h2>
+<blockquote class="warn">⚠️ LiPo batteries can catch fire if shorted or punctured. Work carefully.</blockquote>
+<ol>
+  <li>Cut off the JST connector leaving ~5cm of wire attached to the battery</li>
+  <li>Strip ~4mm of insulation from both wires</li>
+  <li>Tin both wire ends with solder</li>
+  <li><strong>Slide heat shrink onto each wire now</strong>, before soldering to board</li>
+</ol>
+
+<h2><span class="step-num">3</span> Solder battery to XIAO</h2>
+<ol>
+  <li>Tin the BAT+ and BAT- pads on the back of the XIAO</li>
+  <li><strong>Verify polarity with multimeter</strong> before soldering (red = +, black = −, but verify — some units are reversed)</li>
+  <li>Solder red wire to BAT+ pad</li>
+  <li>Solder black wire to BAT- pad</li>
+  <li>Slide heat shrink over each joint, shrink with heat gun</li>
+  <li>Tug gently — joints should not move</li>
+</ol>
+<blockquote>✅ Check: Plug in USB-C. Orange charge LED on XIAO should light up.</blockquote>
+
+<h2><span class="step-num">4</span> Prep the tact switch</h2>
+<ol>
+  <li>Cut two ~15cm wires (red + black)</li>
+  <li>Solder red wire to any pin on one side of the switch</li>
+  <li>Solder black wire to any pin on the <em>opposite</em> side</li>
+  <li>(The 4 pins are connected in pairs — you're bridging across the switch)</li>
+</ol>
+
+<h2><span class="step-num">5</span> Solder switch to XIAO</h2>
+<ol>
+  <li>Solder <strong>red wire → D1 pin</strong> on XIAO</li>
+  <li>Solder <strong>black wire → any GND pin</strong> on XIAO</li>
+</ol>
+<blockquote>✅ Check: Multimeter in continuity mode, probe D1 and GND. Press switch = beep. Release = silence.</blockquote>
+
+<h2><span class="step-num">6</span> Prep the buzzer</h2>
+<ol>
+  <li>Cut two ~10cm wires</li>
+  <li>Solder red wire to the <code>+</code> pin (or longer lead)</li>
+  <li>Solder black wire to the other pin</li>
+</ol>
+
+<h2><span class="step-num">7</span> Solder buzzer to XIAO</h2>
+<ol>
+  <li>Solder <strong>red wire → D2 pin</strong> on XIAO</li>
+  <li>Solder <strong>black wire → any GND pin</strong> on XIAO</li>
+</ol>
+
+<h2><span class="step-num">8</span> Visual inspection before flashing</h2>
+<ul>
+  <li>☐ No solder bridges between adjacent pins</li>
+  <li>☐ Battery polarity correct (double-check)</li>
+  <li>☐ All joints shiny and solid</li>
+  <li>☐ No bare wire touching anything it shouldn't</li>
+  <li>☐ Clean flux residue with isopropyl + cotton swab</li>
+</ul>
+
+<div class="pagebreak"></div>
+
+<h2><span class="step-num">9</span> Flash ESPHome firmware</h2>
+<ol>
+  <li>Open ESPHome dashboard on your laptop</li>
+  <li>Copy the correct YAML from repo — e.g. <code>button-ryker-laundry.yaml</code></li>
+  <li>Confirm <code>secrets.yaml</code> has WiFi credentials and API key filled in</li>
+  <li>Click <strong>Install → Plug into this computer</strong></li>
+  <li>Connect XIAO via USB-C</li>
+  <li>Wait for compile + flash (~2–3 min)</li>
+  <li>Watch logs for: WiFi connected → API connected → Button handler registered</li>
+  <li>Disconnect USB-C</li>
+</ol>
+<blockquote>If flash fails: hold BOOT button on XIAO while connecting USB-C to force bootloader mode.</blockquote>
+
+<h2><span class="step-num">10</span> First press test (before enclosure)</h2>
+<ol>
+  <li>Watch ESPHome logs</li>
+  <li>Press the tact switch</li>
+  <li>Confirm in logs: <code>Button pressed</code> → <code>HTTP POST sent</code> → <code>{"status": "ok"}</code></li>
+  <li>LED should flash green briefly</li>
+  <li>Buzzer should beep once</li>
+  <li>XIAO returns to deep sleep within 10 seconds</li>
+</ol>
+<blockquote><code>{"status": "outside_window"}</code> = working fine, just not 6–9:30 AM<br>
+<code>{"status": "already_done"}</code> = working fine, LED flashes red — task already logged today</blockquote>
+
+<h2><span class="step-num">11</span> Assemble in enclosure</h2>
+<em>(After 3D print is ready and mechanically tested)</em>
+<ol>
+  <li>Place XIAO in slot with USB-C aligned to enclosure opening</li>
+  <li>Route battery alongside/below XIAO</li>
+  <li>Mount tact switch under plunger post — confirm it actuates at bottom of plunger travel</li>
+  <li>Mount buzzer against inside wall, aligned with sound grille</li>
+  <li>Close enclosure</li>
+  <li>Press plunger — confirm tact switch clicks at bottom of travel</li>
+</ol>
+
+<h2><span class="step-num">12</span> Label and mount</h2>
+<ol>
+  <li>Apply kid sticker + task icon to plunger face</li>
+  <li>Test WiFi signal at mounting location (hold button there, watch logs)</li>
+  <li>Clean wall surface with isopropyl alcohol, let dry</li>
+  <li>Peel Command strip backing, press to back of enclosure</li>
+  <li>Press button to wall for 30 seconds</li>
+  <li>Do one final press test from mounted position</li>
+</ol>
+
+<div class="pagebreak"></div>
+
+<h2>✅ Per-Button Commissioning Checklist</h2>
+<div class="checklist">
+<p><strong>Button:</strong> __________________________ &nbsp;&nbsp; <strong>Date:</strong> __________________</p>
+<p>
+☐ Board inspected, no damage<br>
+☐ Battery polarity verified with multimeter<br>
+☐ Battery soldered to BAT+/BAT-<br>
+☐ Battery solder joints heat-shrunk<br>
+☐ Tact switch soldered to D1 + GND<br>
+☐ Buzzer soldered to D2 + GND<br>
+☐ Continuity check passed (D1–GND with switch press)<br>
+☐ ESPHome firmware flashed successfully<br>
+☐ WiFi connects in logs<br>
+☐ Button press event reaches Pi server (HTTP 200)<br>
+☐ LED flashes green on success<br>
+☐ Buzzer beeps on success<br>
+☐ XIAO enters deep sleep after press<br>
+☐ Enclosure assembled, plunger travel feels right<br>
+☐ Sticker applied (correct kid + task)<br>
+☐ Mounted at correct location and height (~36–42" from floor)<br>
+☐ Final press test from wall — event confirmed in logs
+</p>
+</div>
+
+<h2>Recommended Build Order</h2>
+<div class="build-order">
+  <div class="build-item"><span class="num">1.</span> Ryker — Teeth <em>(bathroom, good first test)</em></div>
+  <div class="build-item"><span class="num">2.</span> Logan — Teeth <em>(same room)</em></div>
+  <div class="build-item"><span class="num">3.</span> Ryker — Plates</div>
+  <div class="build-item"><span class="num">4.</span> Logan — Plates</div>
+  <div class="build-item"><span class="num">5.</span> Ryker — Laundry</div>
+  <div class="build-item"><span class="num">6.</span> Logan — Laundry</div>
+  <div class="build-item"><span class="num">7.</span> Ryker — Pills</div>
+  <div class="build-item"><span class="num">8.</span> Ryker — Flute <em>(Wednesday only)</em></div>
+  <div class="build-item"><span class="num">9.</span> Logan — Trumpet <em>(Wednesday only)</em></div>
+</div>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr>
+  <tr><td>XIAO won't boot</td><td>Bad battery joint / short</td><td>Check polarity, inspect solder</td></tr>
+  <tr><td>Won't connect to WiFi</td><td>Wrong SSID/password in secrets.yaml</td><td>Reflash with corrected secrets</td></tr>
+  <tr><td>Flash fails</td><td>Not in bootloader mode</td><td>Hold BOOT + connect USB</td></tr>
+  <tr><td>No HTTP POST in logs</td><td>Pi server not running / wrong IP</td><td>Start Pi server, check IP in config</td></tr>
+  <tr><td>LED flashes red</td><td>Task already done today</td><td>Expected behavior — press tomorrow</td></tr>
+  <tr><td>No buzzer sound</td><td>Wrong pin / active buzzer used</td><td>Confirm D2, confirm passive buzzer</td></tr>
+  <tr><td>Switch not detected</td><td>Cold solder joint</td><td>Reflow D1 or GND joint</td></tr>
+  <tr><td>Button presses ignored</td><td>Outside 6–9:30 AM window</td><td>Expected — or check server time</td></tr>
+</table>
+
+<hr>
+<p style="color:#888; font-size:0.85em; text-align:center;">AM Routine Tracker — Avalon Household &nbsp;|&nbsp; Last updated 2026-03-05 &nbsp;|&nbsp; Questions → ask Iji</p>
+
+</body>
+</html>

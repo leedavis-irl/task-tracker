@@ -1,0 +1,247 @@
+# display-front-door.yaml
+# Waveshare 7.5" V2 (800x480 B/W) on Waveshare ESP32 driver board.
+# Polls Pi server every 5 seconds for state; renders two-column task layout.
+
+substitutions:
+  device_name: display-front-door
+  # TODO: set pi_ip to your Raspberry Pi's static IP address
+  pi_ip: "192.168.1.XXX"
+
+esphome:
+  name: "${device_name}"
+  friendly_name: "Front Door Display"
+  on_boot:
+    priority: -100
+    then:
+      - script.execute: poll_state
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+packages:
+  common: !include .base-common.yaml
+
+# ── SPI ──────────────────────────────────────────────────────────────────────
+spi:
+  clk_pin: GPIO13
+  mosi_pin: GPIO14
+
+# ── Fonts ────────────────────────────────────────────────────────────────────
+font:
+  - file: "gfonts://Roboto"
+    id: font_title
+    size: 40
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !|✓○⚠"
+  - file: "gfonts://Roboto"
+    id: font_task
+    size: 28
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ✓○-/"
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 22
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !:.,"
+
+# ── State globals ─────────────────────────────────────────────────────────────
+# Booleans for each task completion, plus an active-window flag.
+# Updated by the JSON parser in poll_state script.
+globals:
+  - id: active_window
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: both_done
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+  # Ryker
+  - id: ryker_laundry
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: ryker_teeth
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: ryker_plates
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: ryker_pills
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: ryker_flute
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: ryker_flute_today
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: ryker_done
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+  # Logan
+  - id: logan_laundry
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: logan_teeth
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: logan_plates
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: logan_trumpet
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: logan_trumpet_today
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: logan_done
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+# ── HTTP request component ────────────────────────────────────────────────────
+http_request:
+  useragent: "ESPHome Display"
+  timeout: 5s
+
+# ── Polling interval ──────────────────────────────────────────────────────────
+interval:
+  - interval: 5s
+    then:
+      - script.execute: poll_state
+
+# ── Poll script ───────────────────────────────────────────────────────────────
+script:
+  - id: poll_state
+    mode: single
+    then:
+      - http_request.get:
+          url: "http://${pi_ip}:8765/state"
+          on_response:
+            then:
+              - lambda: |-
+                  if (response->status_code != 200) return;
+
+                  std::string body(data.begin(), data.end());
+
+                  // Helper: find "key": true/false in flat JSON
+                  auto get_bool = [&](const std::string& key) -> bool {
+                    std::string search = "\"" + key + "\": ";
+                    auto pos = body.find(search);
+                    if (pos == std::string::npos) return false;
+                    pos += search.size();
+                    return body.substr(pos, 4) == "true";
+                  };
+
+                  id(active_window)      = get_bool("active_window");
+                  id(both_done)          = get_bool("both_done");
+
+                  id(ryker_laundry)      = get_bool("ryker_laundry");
+                  id(ryker_teeth)        = get_bool("ryker_teeth");
+                  id(ryker_plates)       = get_bool("ryker_plates");
+                  id(ryker_pills)        = get_bool("ryker_pills");
+                  id(ryker_flute)        = get_bool("ryker_flute");
+                  id(ryker_flute_today)  = get_bool("ryker_flute_today");
+                  id(ryker_done)         = get_bool("ryker_done");
+
+                  id(logan_laundry)      = get_bool("logan_laundry");
+                  id(logan_teeth)        = get_bool("logan_teeth");
+                  id(logan_plates)       = get_bool("logan_plates");
+                  id(logan_trumpet)      = get_bool("logan_trumpet");
+                  id(logan_trumpet_today)= get_bool("logan_trumpet_today");
+                  id(logan_done)         = get_bool("logan_done");
+
+                  // Trigger a display refresh
+                  id(epaper).update();
+
+# ── E-ink display ─────────────────────────────────────────────────────────────
+display:
+  - platform: waveshare_epaper
+    id: epaper
+    cs_pin: GPIO15
+    dc_pin: GPIO27
+    busy_pin:
+      number: GPIO25
+      inverted: true      # MANDATORY for Waveshare 7.5" V2
+    reset_pin: GPIO26
+    model: 7.50inV2
+    update_interval: never  # push-only; poll_state calls epaper.update()
+    rotation: 0°
+    lambda: |-
+      // ── Constants ──────────────────────────────────────────────────────────
+      const int W = 800;
+      const int H = 480;
+      const int MID = W / 2;          // 400 — vertical divider
+      const int COL_PAD = 30;         // padding inside each column
+      const int TITLE_Y = 20;
+      const int DIVIDER_Y = 75;
+      const int TASK_START_Y = 90;
+      const int TASK_STEP = 45;
+
+      // ── Clear ──────────────────────────────────────────────────────────────
+      it.fill(COLOR_ON);              // white background
+
+      // ── Outside active window ──────────────────────────────────────────────
+      if (!id(active_window)) {
+        it.printf(W/2, H/2 - 20, id(font_title), COLOR_OFF, TextAlign::CENTER,
+                  "Good morning!");
+        it.printf(W/2, H/2 + 30, id(font_small), COLOR_OFF, TextAlign::CENTER,
+                  "Tasks open 6:00 – 9:30 AM");
+        return;
+      }
+
+      // ── Both done — celebration ────────────────────────────────────────────
+      if (id(both_done)) {
+        it.printf(W/2, H/2 - 30, id(font_title), COLOR_OFF, TextAlign::CENTER,
+                  "All done!");
+        it.printf(W/2, H/2 + 30, id(font_small), COLOR_OFF, TextAlign::CENTER,
+                  "Ryker ✓  |  Logan ✓");
+        return;
+      }
+
+      // ── Divider line ───────────────────────────────────────────────────────
+      it.line(MID, 0, MID, H, COLOR_OFF);
+      it.line(0, DIVIDER_Y, W, DIVIDER_Y, COLOR_OFF);
+
+      // ── Column headers ─────────────────────────────────────────────────────
+      it.printf(MID/2, TITLE_Y, id(font_title), COLOR_OFF, TextAlign::CENTER,
+                id(ryker_done) ? "Ryker ✓" : "Ryker");
+      it.printf(MID + MID/2, TITLE_Y, id(font_title), COLOR_OFF, TextAlign::CENTER,
+                id(logan_done) ? "Logan ✓" : "Logan");
+
+      // ── Helper macros (lambdas in C++) ─────────────────────────────────────
+      // Draw one task row in a column.
+      // col_x = left edge of column content area
+      auto draw_task = [&](int col_x, int row, const char* label, bool done, bool applicable) {
+        int y = TASK_START_Y + row * TASK_STEP;
+        const char* marker = applicable ? (done ? "✓" : "○") : "-";
+        it.printf(col_x, y, id(font_task), COLOR_OFF, "%s %s", marker, label);
+      };
+
+      // ── Ryker tasks ────────────────────────────────────────────────────────
+      int row = 0;
+      draw_task(COL_PAD,         row++, "Laundry", id(ryker_laundry), true);
+      draw_task(COL_PAD,         row++, "Teeth",   id(ryker_teeth),   true);
+      draw_task(COL_PAD,         row++, "Plates",  id(ryker_plates),  true);
+      draw_task(COL_PAD,         row++, "Pills",   id(ryker_pills),   true);
+      draw_task(COL_PAD,         row++, "Flute",   id(ryker_flute),   id(ryker_flute_today));
+
+      // ── Logan tasks ────────────────────────────────────────────────────────
+      row = 0;
+      draw_task(MID + COL_PAD,   row++, "Laundry", id(logan_laundry), true);
+      draw_task(MID + COL_PAD,   row++, "Teeth",   id(logan_teeth),   true);
+      draw_task(MID + COL_PAD,   row++, "Plates",  id(logan_plates),  true);
+      draw_task(MID + COL_PAD,   row++, "Trumpet", id(logan_trumpet), id(logan_trumpet_today));

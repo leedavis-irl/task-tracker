@@ -1,0 +1,49 @@
+# .base-display.yaml
+# Shared config for the Waveshare 7.5" V2 e-ink display on Waveshare ESP32 driver board.
+# Included by display-front-door.yaml via packages.
+
+esphome:
+  name: "${device_name}"
+  friendly_name: "${device_name}"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# SPI bus — Waveshare ESP32 driver board standard pinout
+spi:
+  clk_pin: GPIO13
+  mosi_pin: GPIO14
+
+# Waveshare 7.5" V2 (800x480, black/white)
+# IMPORTANT: busy_pin MUST be inverted: true for V2 hardware
+display:
+  - platform: waveshare_epaper
+    id: epaper
+    cs_pin: GPIO15
+    dc_pin: GPIO27
+    busy_pin:
+      number: GPIO25
+      inverted: true      # MANDATORY for Waveshare 7.5" V2
+    reset_pin: GPIO26
+    model: 7.50inV2
+    update_interval: never  # push-only; we call epaper.update() from lambda
+    rotation: 0°
+    lambda: |-
+      // Rendered by display-front-door.yaml lambda (see that file)
+      // This stub is overridden in the device yaml.
+
+# HTTP polling for state — pulls from Pi every 5 seconds
+time:
+  - platform: homeassistant
+    id: ha_time
+
+interval:
+  - interval: 5s
+    then:
+      - script.execute: poll_state
+
+http_request:
+  useragent: "ESPHome Display"
+  timeout: 5s

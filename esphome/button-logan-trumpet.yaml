@@ -1,0 +1,11 @@
+# Wednesday-only button.
+# Server returns {"status": "not_today"} on non-Wednesdays.
+
+substitutions:
+  device_name: button-logan-trumpet
+  owner: logan
+  task: trumpet
+
+packages:
+  common: !include .base-common.yaml
+  button: !include .base-button.yaml
