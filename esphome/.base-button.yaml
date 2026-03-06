@@ -120,7 +120,7 @@ script:
     then:
       - repeat:
           count: 3
-          sequence:
+          then:
             - output.turn_on: buzzer_out
             - delay: 80ms
             - output.turn_off: buzzer_out
