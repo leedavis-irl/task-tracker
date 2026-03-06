@@ -39,15 +39,6 @@ status_led:
     number: GPIO15
     inverted: true
 
-# Onboard RGB LED (WS2812 on GPIO21)
-light:
-  - platform: neopixelbus
-    type: GRB
-    variant: WS2812X
-    pin: GPIO21
-    num_leds: 1
-    name: "RGB LED"
-    id: rgb_led
 
 # Passive buzzer on D2 = GPIO2 — driven by PWM (ledc), polarity doesn't matter
 output:
