@@ -38,12 +38,12 @@ status_led:
     number: GPIO15
     inverted: true
 
-# Passive buzzer on D2 = GPIO2 — driven by PWM (ledc), polarity doesn't matter
-output:
-  - platform: ledc
+# Test: simple GPIO output on D2 to verify pin works
+switch:
+  - platform: gpio
     pin: GPIO2
-    id: buzzer_out
-    frequency: 2000Hz
+    id: test_d2
+    name: "Test D2"
 
 # External tact switch on D1 = GPIO1 (active-low with internal pullup)
 binary_sensor:
@@ -60,7 +60,11 @@ binary_sensor:
       - delayed_on: 50ms
     on_press:
       then:
-        - script.execute: do_press
+        - logger.log: "BUTTON PRESSED - toggling D2"
+        - switch.turn_on: test_d2
+        - delay: 3s
+        - switch.turn_off: test_d2
+        - logger.log: "D2 toggled off"
 
 http_request:
   useragent: "ESPHome Task Button"
@@ -97,37 +101,23 @@ script:
       - delay: 10s
       # - deep_sleep.enter: deep_sleep_1
 
-  # Success: two short beeps
+  # Success
   - id: feedback_success
     mode: restart
     then:
-      - output.turn_on: buzzer_out
-      - delay: 120ms
-      - output.turn_off: buzzer_out
-      - delay: 100ms
-      - output.turn_on: buzzer_out
-      - delay: 120ms
-      - output.turn_off: buzzer_out
+      - logger.log: "FEEDBACK: success"
 
-  # Already done today: one long beep
+  # Already done today
   - id: feedback_already
     mode: restart
     then:
-      - output.turn_on: buzzer_out
-      - delay: 600ms
-      - output.turn_off: buzzer_out
+      - logger.log: "FEEDBACK: already done"
 
-  # Outside window / not_today: three quick beeps
+  # Outside window
   - id: feedback_outside
     mode: restart
     then:
-      - repeat:
-          count: 3
-          then:
-            - output.turn_on: buzzer_out
-            - delay: 80ms
-            - output.turn_off: buzzer_out
-            - delay: 80ms
+      - logger.log: "FEEDBACK: outside window"
 
 # Deep sleep — wakeup_pin omitted (ESP-IDF 5.1.5 sleep crash workaround)
 # GPIO1 (D1) can be re-added as ext1 wakeup once ESP-IDF sleep is stable
