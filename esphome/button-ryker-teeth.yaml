@@ -2,6 +2,7 @@ substitutions:
   device_name: button-ryker-teeth
   owner: ryker
   task: teeth
+  pi_ip: !secret pi_ip
 
 packages:
   common: !include .base-common.yaml

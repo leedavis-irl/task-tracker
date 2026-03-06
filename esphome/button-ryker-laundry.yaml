@@ -2,6 +2,7 @@ substitutions:
   device_name: button-ryker-laundry
   owner: ryker
   task: laundry
+  pi_ip: !secret pi_ip
 
 packages:
   common: !include .base-common.yaml

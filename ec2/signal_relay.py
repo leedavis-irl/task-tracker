@@ -34,7 +34,7 @@ SIGNAL_ACCOUNT = "+17074748930"
 SIGNAL_GROUP_ID = "B0rtgi79BwsuD2OEFO6CxnVhGG4lHNyEzFWFClsas/4="
 
 # signal-cli binary path
-SIGNAL_CLI = os.environ.get("SIGNAL_CLI", "/opt/homebrew/bin/signal-cli")
+SIGNAL_CLI = os.environ.get("SIGNAL_CLI", "/usr/local/bin/signal-cli")
 
 # ── Blueprint (reusable if integrated into household-agent) ───────────────────
 

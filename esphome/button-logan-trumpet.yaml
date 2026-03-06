@@ -5,6 +5,7 @@ substitutions:
   device_name: button-logan-trumpet
   owner: logan
   task: trumpet
+  pi_ip: !secret pi_ip
 
 packages:
   common: !include .base-common.yaml

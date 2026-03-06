@@ -17,26 +17,46 @@ esp32:
   framework:
     type: esp-idf
 # Note: 'seeed_xiao_esp32c6' board ID is not recognized by the pioarduino platform.
-# Use esp32-c6-devkitc-1 — GPIO numbers are identical to the XIAO physical pins.
+# Use esp32-c6-devkitc-1 — GPIO numbers are the same as XIAO physical pin numbers.
+
+# ⚠️ XIAO ESP32-C6 actual pin map (verified 2026-03-06):
+#   D0=GPIO0, D1=GPIO1, D2=GPIO2, D3=GPIO21, D4=GPIO22, D5=GPIO23
+#   GPIO3 is the RF switch power pin (board-internal) — do NOT use for user I/O
+#   GPIO15 = onboard user LED (active low)
+#   GPIO21 = onboard WS2812 RGB LED
+
+# Pi IP address — resolved from substitution (set via !secret in each device yaml)
+text_sensor:
+  - platform: template
+    name: "Pi IP"
+    id: pi_ip
+    lambda: 'return {"${pi_ip}"};'
+    update_interval: never
 
 # XIAO ESP32-C6 user LED — GPIO15, active low
-# Used by ESPHome for status blinking (connecting, connected, error)
 status_led:
   pin:
     number: GPIO15
     inverted: true
 
-# Passive buzzer on D2 = GPIO2
-# Driven by PWM — polarity doesn't matter
+# Onboard RGB LED (WS2812 on GPIO21)
+light:
+  - platform: neopixelbus
+    type: GRB
+    variant: WS2812X
+    pin: GPIO21
+    num_leds: 1
+    name: "RGB LED"
+    id: rgb_led
+
+# Passive buzzer on D2 = GPIO2 — driven by PWM (ledc), polarity doesn't matter
 output:
   - platform: ledc
     pin: GPIO2
     id: buzzer_out
     frequency: 2000Hz
 
-# External tact switch on D1 = GPIO1 (active low, internal pullup)
-# XIAO ESP32-C6 pin map: D0=GPIO0, D1=GPIO1, D2=GPIO2, D3=GPIO21
-# GPIO3 is the RF switch power pin (board-internal) — do NOT use for button
+# External tact switch on D1 = GPIO1 (active-low with internal pullup)
 binary_sensor:
   - platform: gpio
     pin:
@@ -80,7 +100,7 @@ script:
 
   - id: run_and_sleep
     then:
-      - delay: 10s
+      - delay: 10s   # max run duration — gives time for WiFi + button press + HTTP
       - deep_sleep.enter: deep_sleep_1
 
   # Success: two short beeps
@@ -117,15 +137,6 @@ script:
 
 deep_sleep:
   id: deep_sleep_1
-  run_duration: 10s
   wakeup_pin:
     number: GPIO1
     inverted: true   # wake on LOW (button pulls pin low when pressed)
-
-# Pi server IP — from secrets.yaml so it's easy to update without reflashing
-text_sensor:
-  - platform: template
-    name: "Pi IP"
-    id: pi_ip
-    lambda: 'return {!secret pi_ip};'
-    update_interval: never

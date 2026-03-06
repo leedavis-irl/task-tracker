@@ -119,7 +119,7 @@ http_request:
 
 # ── Polling interval ──────────────────────────────────────────────────────────
 interval:
-  - interval: 5s
+  - interval: 60s
     then:
       - script.execute: poll_state
 

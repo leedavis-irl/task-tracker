@@ -34,13 +34,13 @@ display:
       // Rendered by display-front-door.yaml lambda (see that file)
       // This stub is overridden in the device yaml.
 
-# HTTP polling for state — pulls from Pi every 5 seconds
+# Use SNTP for time (no Home Assistant dependency)
 time:
-  - platform: homeassistant
-    id: ha_time
+  - platform: sntp
+    id: sntp_time
 
 interval:
-  - interval: 5s
+  - interval: 60s
     then:
       - script.execute: poll_state
 
