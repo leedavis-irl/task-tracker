@@ -79,11 +79,13 @@
 <h2>GPIO Pin Assignments — Memorize These</h2>
 <table>
   <tr><th>Function</th><th>XIAO Pin Label</th><th>GPIO #</th></tr>
-  <tr><td>Tact switch input</td><td><strong>D1</strong></td><td>GPIO3</td></tr>
-  <tr><td>Passive buzzer PWM</td><td><strong>D2</strong></td><td>GPIO4</td></tr>
+  <tr><td>Tact switch input</td><td><strong>D1</strong></td><td><strong>GPIO1</strong></td></tr>
+  <tr><td>Passive buzzer PWM</td><td><strong>D2</strong></td><td><strong>GPIO2</strong></td></tr>
   <tr><td>Battery positive</td><td><strong>BAT+ pad</strong></td><td>near D5 silkscreen (back of board)</td></tr>
   <tr><td>Battery negative</td><td><strong>BAT- pad</strong></td><td>near D8 silkscreen (back of board)</td></tr>
 </table>
+
+<blockquote class="warn">⚠️ <strong>GPIO3 is NOT D1.</strong> GPIO3 is the RF switch power pin — an internal board signal. Do not use it. The correct mapping is D1 = GPIO1, D2 = GPIO2. The full XIAO pin map: D0=GPIO0, D1=GPIO1, D2=GPIO2, D3=GPIO21, D4=GPIO22, D5=GPIO23.</blockquote>
 
 <div class="pagebreak"></div>
 
@@ -96,12 +98,12 @@
 </ul>
 
 <h2><span class="step-num">2</span> Prep the LiPo battery</h2>
-<blockquote class="warn">⚠️ LiPo batteries can catch fire if shorted or punctured. Work carefully.</blockquote>
+<blockquote class="warn">⚠️ LiPo batteries can catch fire if shorted. The two bare wire ends must <strong>never touch each other</strong> — insulate them immediately after cutting.</blockquote>
 <ol>
   <li>Cut off the JST connector leaving ~5cm of wire attached to the battery</li>
-  <li>Strip ~4mm of insulation from both wires</li>
-  <li>Tin both wire ends with solder</li>
-  <li><strong>Slide heat shrink onto each wire now</strong>, before soldering to board</li>
+  <li><strong>Immediately</strong> slide a piece of heat shrink over each wire end and shrink it down — leave only ~4mm of wire exposed at the tip. Do this before anything else. Both ends insulated before you proceed.</li>
+  <li>Strip the 4mm tips</li>
+  <li>Tin both wire tips with solder</li>
 </ol>
 
 <h2><span class="step-num">3</span> Solder battery to XIAO</h2>
@@ -110,14 +112,14 @@
   <li><strong>Verify polarity with multimeter</strong> before soldering (red = +, black = −, but verify — some units are reversed)</li>
   <li>Solder red wire to BAT+ pad</li>
   <li>Solder black wire to BAT- pad</li>
-  <li>Slide heat shrink over each joint, shrink with heat gun</li>
+  <li>Check that no wire strands are poking sideways toward adjacent pads</li>
   <li>Tug gently — joints should not move</li>
 </ol>
-<blockquote>✅ Check: Plug in USB-C. Orange charge LED on XIAO should light up.</blockquote>
+<blockquote>Note: no heat shrink needed on the board side — the solder pad is the joint. The heat shrink from Step 2 protects the battery-end wires from shorting against each other.<br><br>✅ Check: Plug in USB-C. Orange charge LED on XIAO should light up.</blockquote>
 
 <h2><span class="step-num">4</span> Prep the tact switch</h2>
 <ol>
-  <li>Cut two ~15cm wires (red + black)</li>
+  <li>Cut two ~2.5" wires (red + black)</li>
   <li>Solder red wire to any pin on one side of the switch</li>
   <li>Solder black wire to any pin on the <em>opposite</em> side</li>
   <li>(The 4 pins are connected in pairs — you're bridging across the switch)</li>
@@ -128,13 +130,12 @@
   <li>Solder <strong>red wire → D1 pin</strong> on XIAO</li>
   <li>Solder <strong>black wire → any GND pin</strong> on XIAO</li>
 </ol>
-<blockquote>✅ Check: Multimeter in continuity mode, probe D1 and GND. Press switch = beep. Release = silence.</blockquote>
+<blockquote>✅ Check (optional — skip if you don't have alligator clip leads): The GDT-311 has no continuity beeper — use <strong>Ω mode, 200 range</strong> instead. Red probe to D1 wire, black probe to GND wire. Unpressed = "1." (open circuit). Pressed = near 0. You need both hands to hold probes + one to press — use alligator clip leads or a helping-hands stand, or just skip and verify during the firmware test in Step 10.</blockquote>
 
 <h2><span class="step-num">6</span> Prep the buzzer</h2>
 <ol>
-  <li>Cut two ~10cm wires</li>
-  <li>Solder red wire to the <code>+</code> pin (or longer lead)</li>
-  <li>Solder black wire to the other pin</li>
+  <li>Cut two ~2.5" wires</li>
+  <li>Solder one wire to one pin, other wire to the other pin — <strong>polarity doesn't matter</strong> for a passive buzzer, it's driven by PWM not DC</li>
 </ol>
 
 <h2><span class="step-num">7</span> Solder buzzer to XIAO</h2>
@@ -154,6 +155,15 @@
 
 <div class="pagebreak"></div>
 
+<h2><span class="step-num">8b</span> Pre-flash electrical test (do this before touching a computer)</h2>
+<p>Set multimeter to <strong>Ω mode, 200 range</strong>. The GDT-311 has no beeper — watch the display.</p>
+<ol>
+  <li><strong>Test each solder joint:</strong> probe the wire above the joint on one side, probe the board pad on the other. Should read near <strong>0</strong>. If it reads OL or high, reflow the joint.</li>
+  <li><strong>Test switch continuity:</strong> probe the two button wires (at any exposed metal — connector pins, stripped sections). Unpressed = OL or ~2.0. Pressed = near 0. If it reads near 0 unpressed, the switch is shorted — replace it.</li>
+  <li><strong>Test no shorts:</strong> probe D1 pad to D2 pad. Should read OL. Probe any signal pad to GND unpressed. Should read OL (D1) or near 0 (GND-to-GND).</li>
+</ol>
+<blockquote>If you can't hold probes + press the switch at the same time, skip the switch continuity test here and verify it in Step 10 via the logs instead.</blockquote>
+
 <h2><span class="step-num">9</span> Flash ESPHome firmware</h2>
 <ol>
   <li>Open ESPHome dashboard on your laptop</li>
@@ -169,15 +179,16 @@
 
 <h2><span class="step-num">10</span> First press test (before enclosure)</h2>
 <ol>
-  <li>Watch ESPHome logs</li>
-  <li>Press the tact switch</li>
-  <li>Confirm in logs: <code>Button pressed</code> → <code>HTTP POST sent</code> → <code>{"status": "ok"}</code></li>
-  <li>LED should flash green briefly</li>
-  <li>Buzzer should beep once</li>
+  <li>Flash the device and open logs</li>
+  <li><strong>Confirm GPIO1 is reading correctly:</strong> with logs streaming, briefly short the D1 and GND wires together. You should see <code>Button pressed</code> in the logs. If not — stop here and troubleshoot before proceeding.</li>
+  <li>Press the physical tact switch</li>
+  <li>Confirm in logs: <code>Button pressed</code> → <code>HTTP POST sent</code> → response received</li>
+  <li>Buzzer should beep on press</li>
   <li>XIAO returns to deep sleep within 10 seconds</li>
 </ol>
-<blockquote><code>{"status": "outside_window"}</code> = working fine, just not 6–9:30 AM<br>
-<code>{"status": "already_done"}</code> = working fine, LED flashes red — task already logged today</blockquote>
+<blockquote><code>{"status": "outside_window"}</code> = working fine, just not during the task window<br>
+<code>{"status": "already_done"}</code> = working fine, task already logged today<br><br>
+<strong>If shorting D1+GND works but physical switch press doesn't:</strong> the solder joint on the switch is the problem. Reflow both switch joints and retest.</blockquote>
 
 <h2><span class="step-num">11</span> Assemble in enclosure</h2>
 <em>(After 3D print is ready and mechanically tested)</em>
@@ -248,12 +259,13 @@
   <tr><td>No HTTP POST in logs</td><td>Pi server not running / wrong IP</td><td>Start Pi server, check IP in config</td></tr>
   <tr><td>LED flashes red</td><td>Task already done today</td><td>Expected behavior — press tomorrow</td></tr>
   <tr><td>No buzzer sound</td><td>Wrong pin / active buzzer used</td><td>Confirm D2, confirm passive buzzer</td></tr>
-  <tr><td>Switch not detected</td><td>Cold solder joint</td><td>Reflow D1 or GND joint</td></tr>
+  <tr><td>Switch not detected</td><td>Cold solder joint</td><td>Short D1+GND wires to test GPIO — if that works, reflow switch joints</td></tr>
+  <tr><td>GPIO never changes no matter what</td><td>Wrong GPIO in firmware (old configs used GPIO3 which is an internal RF switch pin)</td><td>Confirm firmware uses GPIO1 for D1 and GPIO2 for D2 — not GPIO3/GPIO4</td></tr>
   <tr><td>Button presses ignored</td><td>Outside 6–9:30 AM window</td><td>Expected — or check server time</td></tr>
 </table>
 
 <hr>
-<p style="color:#888; font-size:0.85em; text-align:center;">AM Routine Tracker — Avalon Household &nbsp;|&nbsp; Last updated 2026-03-05 &nbsp;|&nbsp; Questions → ask Iji</p>
+<p style="color:#888; font-size:0.85em; text-align:center;">AM Routine Tracker — Avalon Household &nbsp;|&nbsp; Last updated 2026-03-06 &nbsp;|&nbsp; Questions → ask Iji</p>
 
 </body>
 </html>

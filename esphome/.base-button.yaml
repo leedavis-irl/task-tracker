@@ -12,9 +12,12 @@ esphome:
       - script.execute: run_and_sleep
 
 esp32:
-  board: seeed_xiao_esp32c6
+  board: esp32-c6-devkitc-1
+  variant: esp32c6
   framework:
-    type: arduino
+    type: esp-idf
+# Note: 'seeed_xiao_esp32c6' board ID is not recognized by the pioarduino platform.
+# Use esp32-c6-devkitc-1 — GPIO numbers are identical to the XIAO physical pins.
 
 # XIAO ESP32-C6 user LED — GPIO15, active low
 # Used by ESPHome for status blinking (connecting, connected, error)
@@ -23,19 +26,22 @@ status_led:
     number: GPIO15
     inverted: true
 
-# Passive buzzer on D2 = GPIO4
+# Passive buzzer on D2 = GPIO2
 # Driven by PWM — polarity doesn't matter
 output:
   - platform: ledc
-    pin: GPIO4
+    pin: GPIO2
     id: buzzer_out
     frequency: 2000Hz
 
-# External tact switch on D1 = GPIO3 (active low, internal pullup)
+# External tact switch on D1 = GPIO1 (active low, internal pullup)
+# XIAO ESP32-C6 pin map: D0=GPIO0, D1=GPIO1, D2=GPIO2, D3=GPIO21
+# GPIO3 is the RF switch power pin (board-internal) — do NOT use for button
 binary_sensor:
   - platform: gpio
     pin:
-      number: GPIO3
+      number: GPIO1
+      inverted: true
       mode:
         input: true
         pullup: true
@@ -113,7 +119,7 @@ deep_sleep:
   id: deep_sleep_1
   run_duration: 10s
   wakeup_pin:
-    number: GPIO3
+    number: GPIO1
     inverted: true   # wake on LOW (button pulls pin low when pressed)
 
 # Pi server IP — from secrets.yaml so it's easy to update without reflashing
