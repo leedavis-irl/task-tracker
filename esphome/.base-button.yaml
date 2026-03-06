@@ -90,7 +90,7 @@ script:
   - id: run_and_sleep
     then:
       - delay: 10s
-      - deep_sleep.enter: deep_sleep_1
+      # - deep_sleep.enter: deep_sleep_1
 
   # Success: two short beeps
   - id: feedback_success
