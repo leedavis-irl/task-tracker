@@ -31,7 +31,6 @@ text_sensor:
     name: "Pi IP"
     id: pi_ip
     lambda: 'return {"${pi_ip}"};'
-    update_interval: never
 
 # XIAO ESP32-C6 user LED — GPIO15, active low
 status_led:
@@ -71,7 +70,9 @@ script:
   - id: do_press
     then:
       - http_request.post:
-          url: !lambda 'return ((std::string)"http://") + id(pi_ip).state + ":8765/press";'
+          capture_response: true
+          max_response_buffer_size: 256
+          url: "http://${pi_ip}:8765/press"
           headers:
             Content-Type: application/json
           body: !lambda |-
@@ -86,6 +87,10 @@ script:
                   } else {
                     id(feedback_outside).execute();
                   }
+          on_error:
+            then:
+              - logger.log: "HTTP request failed"
+              - script.execute: feedback_outside
 
   - id: run_and_sleep
     then:
