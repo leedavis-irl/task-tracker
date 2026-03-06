@@ -79,10 +79,10 @@ script:
           on_response:
             then:
               - lambda: |-
-                  std::string body(data.begin(), data.end());
-                  if (response->status_code == 200 && body.find("\"ok\"") != std::string::npos) {
+                  std::string response_body = response->get_string();
+                  if (response->status_code == 200 && response_body.find("\"ok\"") != std::string::npos) {
                     id(feedback_success).execute();
-                  } else if (body.find("\"already_done\"") != std::string::npos) {
+                  } else if (response_body.find("\"already_done\"") != std::string::npos) {
                     id(feedback_already).execute();
                   } else {
                     id(feedback_outside).execute();
