@@ -19,11 +19,11 @@ esp32:
 # Note: 'seeed_xiao_esp32c6' board ID is not recognized by the pioarduino platform.
 # Use esp32-c6-devkitc-1 — GPIO numbers are the same as XIAO physical pin numbers.
 
-# ⚠️ XIAO ESP32-C6 actual pin map (verified 2026-03-06):
-#   D0=GPIO0, D1=GPIO1, D2=GPIO2, D3=GPIO21, D4=GPIO22, D5=GPIO23
-#   GPIO3 is the RF switch power pin (board-internal) — do NOT use for user I/O
-#   GPIO15 = onboard user LED (active low)
-#   GPIO21 = onboard WS2812 RGB LED
+# XIAO ESP32-C6 actual pin map (verified 2026-03-06):
+# D0=GPIO0, D1=GPIO1, D2=GPIO2, D3=GPIO21, D4=GPIO22, D5=GPIO23
+# GPIO3 is the RF switch power pin (board-internal) — do NOT use for user I/O
+# GPIO15 = onboard user LED (active low)
+# GPIO21 = plain GPIO, no onboard LED on this form factor
 
 # Pi IP address — resolved from substitution (set via !secret in each device yaml)
 text_sensor:
@@ -38,7 +38,6 @@ status_led:
   pin:
     number: GPIO15
     inverted: true
-
 
 # Passive buzzer on D2 = GPIO2 — driven by PWM (ledc), polarity doesn't matter
 output:
@@ -75,7 +74,7 @@ script:
           url: !lambda 'return ((std::string)"http://") + id(pi_ip).state + ":8765/press";'
           headers:
             Content-Type: application/json
-          body: !lambda |
+          body: !lambda |-
             return ((std::string)"{\"owner\": \"${owner}\", \"task\": \"${task}\"}");
           on_response:
             then:
@@ -91,7 +90,7 @@ script:
 
   - id: run_and_sleep
     then:
-      - delay: 10s   # max run duration — gives time for WiFi + button press + HTTP
+      - delay: 10s
       - deep_sleep.enter: deep_sleep_1
 
   # Success: two short beeps
@@ -126,7 +125,7 @@ script:
             - output.turn_off: buzzer_out
             - delay: 80ms
 
+# Deep sleep — wakeup_pin omitted (ESP-IDF 5.1.5 sleep crash workaround)
+# GPIO1 (D1) can be re-added as ext1 wakeup once ESP-IDF sleep is stable
 deep_sleep:
   id: deep_sleep_1
-
-    inverted: true   # wake on LOW (button pulls pin low when pressed)
