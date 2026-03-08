@@ -9,6 +9,7 @@ esphome:
   on_boot:
     priority: 600
     then:
+      - script.execute: feedback_success
       - script.execute: run_and_sleep
 
 esp32:
@@ -38,12 +39,12 @@ status_led:
     number: GPIO15
     inverted: true
 
-# Test: simple GPIO output on D2 to verify pin works
-switch:
+# Passive buzzer on D2 = GPIO2 — plain GPIO output
+# Note: LEDC/rtttl does not work on ESP32-C6 with esp-idf; using GPIO toggle instead
+output:
   - platform: gpio
     pin: GPIO2
-    id: test_d2
-    name: "Test D2"
+    id: buzzer_out
 
 # External tact switch on D1 = GPIO1 (active-low with internal pullup)
 binary_sensor:
@@ -60,11 +61,7 @@ binary_sensor:
       - delayed_on: 50ms
     on_press:
       then:
-        - logger.log: "BUTTON PRESSED - toggling D2"
-        - switch.turn_on: test_d2
-        - delay: 3s
-        - switch.turn_off: test_d2
-        - logger.log: "D2 toggled off"
+        - script.execute: do_press
 
 http_request:
   useragent: "ESPHome Task Button"
@@ -101,23 +98,41 @@ script:
       - delay: 10s
       # - deep_sleep.enter: deep_sleep_1
 
-  # Success
+  # Success: two short beeps
   - id: feedback_success
     mode: restart
     then:
-      - logger.log: "FEEDBACK: success"
+      - output.turn_on: buzzer_out
+      - delay: 100ms
+      - output.turn_off: buzzer_out
+      - delay: 80ms
+      - output.turn_on: buzzer_out
+      - delay: 100ms
+      - output.turn_off: buzzer_out
 
-  # Already done today
+  # Already done today: one long beep
   - id: feedback_already
     mode: restart
     then:
-      - logger.log: "FEEDBACK: already done"
+      - output.turn_on: buzzer_out
+      - delay: 500ms
+      - output.turn_off: buzzer_out
 
-  # Outside window
+  # Outside window / not_today: three quick beeps
   - id: feedback_outside
     mode: restart
     then:
-      - logger.log: "FEEDBACK: outside window"
+      - output.turn_on: buzzer_out
+      - delay: 80ms
+      - output.turn_off: buzzer_out
+      - delay: 60ms
+      - output.turn_on: buzzer_out
+      - delay: 80ms
+      - output.turn_off: buzzer_out
+      - delay: 60ms
+      - output.turn_on: buzzer_out
+      - delay: 80ms
+      - output.turn_off: buzzer_out
 
 # Deep sleep — wakeup_pin omitted (ESP-IDF 5.1.5 sleep crash workaround)
 # GPIO1 (D1) can be re-added as ext1 wakeup once ESP-IDF sleep is stable
