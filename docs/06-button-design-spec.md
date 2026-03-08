@@ -73,18 +73,19 @@ The plunger is a separate printed piece that moves vertically inside the base. I
   - Sad trombone if pressed after deadline (just kidding... maybe)
 
 ### ESPHome Config Pattern
+
+> **LEDC/rtttl does NOT work** on ESP32-C6 with esp-idf framework (outputs 0V). Use plain GPIO toggle instead — produces audible clicks on the passive buzzer.
+
 ```yaml
 output:
-  - platform: ledc
-    pin: GPIO_XX  # TBD during wiring
-    id: buzzer_pwm
+  - platform: gpio
+    pin: GPIO2    # D2 on XIAO ESP32-C6
+    id: buzzer_out
 
-rtttl:
-  output: buzzer_pwm
-  id: buzzer
-
-# On button press:
-# - buzzer.play: "confirm:d=4,o=6,b=200:c,e"
+# Feedback via GPIO toggle patterns (on/off with delays):
+# - Two clicks = success
+# - One long click = already done
+# - Three quick clicks = outside window / error
 ```
 
 ## Visual Identity
@@ -144,16 +145,16 @@ Buttons mounted as close to task completion point as possible:
 
 ## GPIO Allocation (XIAO ESP32-C6)
 
-| GPIO | Function |
-|------|----------|
-| TBD | Tact switch input (with internal pull-up, active LOW) |
-| TBD | Passive buzzer output (LEDC PWM) |
-| TBD | (spare) |
-| BAT+ | LiPo positive (solder pad near D5) |
-| BAT- | LiPo negative (solder pad near D8) |
-| USB-C | Charging + flashing |
+| GPIO | XIAO Pin | Function |
+|------|----------|----------|
+| GPIO1 | D1 | Tact switch input (internal pull-up, active LOW) |
+| GPIO2 | D2 | Passive buzzer output (plain GPIO toggle) |
+| GPIO15 | (onboard) | Status LED (active low) |
+| BAT+ | pad near D5 | LiPo positive |
+| BAT- | pad near D8 | LiPo negative |
+| USB-C | — | Charging + flashing |
 
-> **NOTE**: Specific GPIO assignments to be determined during wiring prototyping. XIAO ESP32-C6 has limited pins — confirm which support LEDC PWM output and which work as wake-from-deep-sleep interrupt sources.
+> **Pin mapping**: D0=GPIO0, D1=GPIO1, D2=GPIO2, D3=GPIO21, D4=GPIO22, D5=GPIO23. GPIO3 is RF switch power (board-internal, do NOT use).
 
 ## Prototype Plan
 
@@ -167,5 +168,5 @@ Buttons mounted as close to task completion point as possible:
 - [ ] Shared vs paired buttons (see Visual Identity section)
 - [ ] Specific plunger return mechanism (living hinge vs o-ring vs leaf spring) — decide during prototyping
 - [ ] Icon designs — involve kids in choosing
-- [ ] Exact GPIO pin assignments for switch and buzzer
+- [x] ~~Exact GPIO pin assignments for switch and buzzer~~ — resolved: D1/GPIO1 (switch), D2/GPIO2 (buzzer)
 - [ ] PETG color filament availability for kid-specific colors

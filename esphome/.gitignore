@@ -1,0 +1,9 @@
+# ESPHome build artifacts
+/.esphome/
+
+# Secrets — never commit credentials
+/secrets.yaml
+
+# One-off test/flash configs (may contain hardcoded credentials)
+buzzer-test.yaml
+*-flash.yaml
