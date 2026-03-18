@@ -66,6 +66,7 @@ binary_sensor:
 http_request:
   useragent: "ESPHome Task Button"
   timeout: 5s
+  verify_ssl: false
 
 script:
   - id: do_press

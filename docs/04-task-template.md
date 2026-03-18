@@ -7,23 +7,19 @@ Use this template every time you add a new task to the system. Fill out the defi
 ## Task Definition (fill this out first)
 
 ```
-Task name:         _______________  (e.g., "laundry", "teeth", "flute")
+Task name:         _______________  (e.g., "laundry", "teeth", "vitamins")
 Task owner:        _______________  (e.g., "ryker", "logan")
-Schedule:          _______________  (e.g., "daily", "wednesday", "monday,friday")
+Schedule:          _______________  (e.g., "daily", "wednesday-only")
 Location:          _______________  (e.g., "hall laundry chute", "bathroom")
 Button placement:  _______________  (describe exact spot)
-Signal message:    _______________  (e.g., "✅ Ryker put laundry in the chute!")
-All-done message:  _______________  (e.g., "🎉 Ryker finished all morning tasks!")
 ```
 
 ### Derived names (auto-fill from above)
 
 ```
 Device name:       button-{owner}-{task}
-Entity boolean:    input_boolean.task_{owner}_{task}
-Entity datetime:   input_datetime.task_{owner}_{task}_time
-Automation name:   task_button_{owner}_{task}
 ESPHome file:      button-{owner}-{task}.yaml
+Server dict:       DAILY_TASKS["{owner}"] (or WEDNESDAY_TASKS["{owner}"] for day-specific)
 ```
 
 ---
@@ -35,136 +31,78 @@ Create `esphome/button-{owner}-{task}.yaml`:
 ```yaml
 substitutions:
   device_name: button-{owner}-{task}
-  friendly_name: "{Owner} {Task} Button"
-  task_owner: {owner}
-  task_name: {task}
+  owner: {owner}
+  task: {task}
+  pi_ip: !secret pi_ip
 
 packages:
   common: !include .base-common.yaml
   button: !include .base-button.yaml
 ```
 
-**Verify:** ESPHome dashboard shows new device, compiles without error.
+**Verify:** `esphome compile button-{owner}-{task}.yaml` completes without error.
 
 ## Step 2: Flash Firmware
 
 1. Connect Seeed XIAO ESP32-C6 via USB
-2. Flash initial firmware from ESPHome dashboard
-3. Disconnect USB
-4. Verify device appears in ESPHome dashboard as online
-5. Verify device auto-discovered in HA (Settings → Devices & Integrations)
-6. Assign to correct HA Area
+2. Flash firmware: `esphome run button-{owner}-{task}.yaml --device /dev/cu.usbmodem*`
+3. Watch serial logs — verify WiFi connects and boot feedback (two clicks)
+4. Disconnect USB
 
-## Step 3: Create HA Entities
+## Step 3: Add Task to Server
 
-Add to `input_booleans.yaml`:
+Edit `server.py` on EC2:
 
-```yaml
-task_{owner}_{task}:
-  name: "{Owner} {Task}"
-  icon: mdi:checkbox-marked-circle-outline
+**For daily tasks**, add to `DAILY_TASKS`:
+```python
+DAILY_TASKS = {
+    "ryker": ["laundry", "teeth", "plates", "pills", "{task}"],
+    ...
+}
 ```
 
-Add to `input_datetimes.yaml`:
-
-```yaml
-task_{owner}_{task}_time:
-  name: "{Owner} {Task} Time"
-  has_date: true
-  has_time: true
+**For day-specific tasks**, add to `WEDNESDAY_TASKS` (or create a new dict for other days):
+```python
+WEDNESDAY_TASKS = {
+    "ryker": ["{task}"],
+    ...
+}
 ```
 
-**Action:** Restart Home Assistant to pick up new entities.
+Restart the server: `sudo systemctl restart task-tracker`
 
-**Verify:** New entities appear in Developer Tools → States.
+**Verify:** `curl http://34.208.73.189:8765/state` shows the new task field.
 
-## Step 4: Create Button Automation
+## Step 4: Update Display Lambda
 
-Add to `automations/task_button_automations.yaml`:
+Add the new task to the e-ink display rendering in `display-front-door.yaml`:
 
-```yaml
-- alias: "task_button_{owner}_{task}"
-  description: "Handle {Owner} {task} button press"
-  trigger:
-    - platform: event
-      event_type: esphome.task_button_press
-      event_data:
-        owner: "{owner}"
-        task: "{task}"
-  condition:
-    - condition: state
-      entity_id: input_boolean.task_{owner}_{task}
-      state: "off"
-    # ADD THIS BLOCK ONLY for non-daily tasks:
-    # - condition: time
-    #   weekday:
-    #     - wed    # or whatever day(s) apply
-  action:
-    - service: input_boolean.turn_on
-      entity_id: input_boolean.task_{owner}_{task}
-    - service: input_datetime.set_datetime
-      entity_id: input_datetime.task_{owner}_{task}_time
-      data:
-        datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
-    - service: notify.signal
-      data:
-        message: "{signal_message}"
-```
-
-**Action:** Reload automations in HA (Developer Tools → YAML → Reload Automations).
-
-**Verify:** Automation appears in Settings → Automations.
-
-## Step 5: Update Remaining-Count Sensor
-
-Add the new task to the relevant child's template sensor:
-
-```yaml
-# In templates.yaml, update the task list:
-{% set tasks = ['laundry', 'teeth', 'plates', 'pills', '{task}'] %}
-```
-
-Also add the new entity to the daily reset automation's entity list.
-
-**Action:** Reload template entities.
-
-## Step 6: Update Display Lambda
-
-Add the new task to the e-ink display rendering. The display lambda references HA text sensors, so add the new task to the display payload template sensor that feeds the e-ink.
+1. Add a new global boolean for the task state
+2. Add parsing in the `poll_state` lambda to read the new field
+3. Add a `draw_task()` call in the display lambda
 
 **Verify:** Display shows the new task row in the correct child's column.
 
-## Step 7: Update Daily Reset
+## Step 5: Flash Display
 
-Add new entities to the daily reset automation:
+Recompile and OTA-flash the display:
 
-```yaml
-# In task_reset.yaml, add:
-- service: input_boolean.turn_off
-  entity_id: input_boolean.task_{owner}_{task}
-- service: input_datetime.set_datetime
-  entity_id: input_datetime.task_{owner}_{task}_time
-  data:
-    datetime: "1970-01-01 00:00:00"
+```bash
+esphome upload display-front-door.yaml --device display-front-door.local
 ```
 
-**Verify:** Trigger reset manually, confirm new entities clear.
-
-## Step 8: Run Commissioning Test
+## Step 6: Run Commissioning Test
 
 Execute the full per-button commissioning checklist from `03-project-process.md`:
 
-- [ ] Button press event reaches HA
-- [ ] State toggles correctly
-- [ ] Signal notification received
-- [ ] Display updates
-- [ ] Duplicate press blocked
-- [ ] LED feedback works
-- [ ] Device sleeps after press
-- [ ] Included in daily reset
-- [ ] Remaining count accurate
+- [ ] Button press reaches server (check server logs)
+- [ ] State updates correctly (`/state` endpoint)
+- [ ] Display shows new task
+- [ ] Duplicate press returns "already_done" (one long click)
+- [ ] Included in daily reset (check after 3 AM or manual reset)
+- [ ] Included in 9:30 AM Signal summary
 
-## Step 9: Physical Deployment
+## Step 7: Physical Deployment
 
 1. Apply sticker (kid identifier + task icon)
 2. Test WiFi signal at mounting location
@@ -172,7 +110,7 @@ Execute the full per-button commissioning checklist from `03-project-process.md`
 4. Mount and verify press from wall
 5. Take photo for documentation
 
-## Step 10: Commit and Document
+## Step 8: Commit and Document
 
 1. Git add all changed files
 2. Commit: `feat(button): add {owner} {task} button`
@@ -180,35 +118,15 @@ Execute the full per-button commissioning checklist from `03-project-process.md`
 
 ---
 
-## Quick Reference: Schedule Conditions
+## Quick Reference: Schedule Configuration
 
-For tasks that only run on specific days, add this condition block:
+Tasks are scheduled by which Python dict they belong to in `server.py`:
 
-**Wednesday only (instruments):**
-```yaml
-- condition: time
-  weekday:
-    - wed
-```
+**Daily tasks:** Add to `DAILY_TASKS` dict — applies every day.
 
-**Weekdays only:**
-```yaml
-- condition: time
-  weekday:
-    - mon
-    - tue
-    - wed
-    - thu
-    - fri
-```
+**Wednesday only:** Add to `WEDNESDAY_TASKS` dict — server checks `datetime.now(PACIFIC).weekday() == 2`. (Currently empty — no Wednesday-only tasks are configured.)
 
-**Specific days:**
-```yaml
-- condition: time
-  weekday:
-    - mon
-    - thu
-```
+**Other day-specific tasks:** Create a new dict (e.g., `MONDAY_TASKS`) and update `tasks_for_today()` to include it.
 
 ---
 
@@ -220,14 +138,10 @@ Task owner:        ryker
 Schedule:          daily
 Location:          hall laundry chute
 Button placement:  wall next to chute opening, 3 feet height
-Signal message:    ✅ Ryker put laundry in the chute!
-All-done message:  🎉 Ryker finished all morning tasks!
 ```
 
 ```
 Device name:       button-ryker-laundry
-Entity boolean:    input_boolean.task_ryker_laundry
-Entity datetime:   input_datetime.task_ryker_laundry_time
-Automation name:   task_button_ryker_laundry
 ESPHome file:      button-ryker-laundry.yaml
+Server dict:       DAILY_TASKS["ryker"]
 ```

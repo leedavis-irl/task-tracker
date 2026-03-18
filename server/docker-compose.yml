@@ -1,0 +1,17 @@
+version: "3"
+services:
+  task-tracker:
+    build: .
+    container_name: task-tracker
+    restart: always
+    ports:
+      - "8765:8765"
+    volumes:
+      - task-tracker-data:/data
+    environment:
+      - STATE_FILE=/data/state.json
+      - EC2_RELAY_URL=http://127.0.0.1:8766/send-signal
+      - RELAY_TOKEN=${RELAY_TOKEN:-CHANGE_ME_shared_secret}
+
+volumes:
+  task-tracker-data:

@@ -1,7 +1,7 @@
 # Task Tracker — Deployment Guide
 
 End-to-end setup for the Avalon household task tracker:
-9 ESPHome buttons + 1 e-ink display + Pi server + EC2 Signal relay.
+7 ESPHome buttons + 1 e-ink display + EC2 server + EC2 Signal relay.
 
 ---
 
@@ -11,7 +11,7 @@ End-to-end setup for the Avalon household task tracker:
 [Button press]
      │  HTTP POST /press
      ▼
-[Pi Server :8765]  ──── GET /state ────▶  [E-ink Display]
+[EC2 Server :8765]  ──── GET /state ────▶  [E-ink Display]
      │
      │  9:30 AM summary only
      ▼
@@ -22,18 +22,19 @@ End-to-end setup for the Avalon household task tracker:
 ```
 
 **Signal behavior:** One message per day, sent at 9:30 AM Pacific.
-Format: `✅ Ryker done | ⚠️ Logan missed: teeth, plates`
+Format: `Ryker done | Logan missed: teeth, plates`
 No real-time notifications when tasks are completed.
 
 ---
 
 ## Prerequisites
 
-- Raspberry Pi (any model with WiFi) on the Avalon local network
-- EC2 instance at 13.58.219.0 with signal-cli configured for +17074748930
-- 9× Seeed XIAO ESP32-C6 boards
+- AWS EC2 instance (currently at 34.208.73.189) with ports 8765 and 8766 open
+- SSH key: `~/.ssh/the-pem-key.pem`
+- signal-cli configured on EC2 for +17074748930
+- 7× Seeed XIAO ESP32-C6 boards
 - 1× Waveshare 7.5" V2 e-ink display + Waveshare ESP32 driver board
-- A machine with ESPHome installed (or use the ESPHome web installer)
+- A machine with ESPHome installed (`pip install esphome`)
 
 ---
 
@@ -44,15 +45,15 @@ Do this first so you can test it independently.
 ### 1.1 SSH into EC2
 
 ```bash
-ssh -i ~/.ssh/iji_ec2 ubuntu@13.58.219.0
+ssh -i ~/.ssh/the-pem-key.pem ubuntu@34.208.73.189
 ```
 
 ### 1.2 Copy signal_relay.py
 
 ```bash
-scp -i ~/.ssh/iji_ec2 \
+scp -i ~/.ssh/the-pem-key.pem \
   task-tracker/ec2/signal_relay.py \
-  ubuntu@13.58.219.0:~/signal_relay.py
+  ubuntu@34.208.73.189:~/signal_relay.py
 ```
 
 ### 1.3 Install Flask (if not already present)
@@ -64,13 +65,12 @@ pip3 install flask
 ### 1.4 Choose a relay token
 
 Pick any strong random string. You'll use the same value in two places:
-- `RELAY_TOKEN` env var on EC2
-- `RELAY_TOKEN` env var in the Pi systemd service
+- `RELAY_TOKEN` env var on EC2 (signal relay)
+- `RELAY_TOKEN` env var in the task-tracker systemd service
 
 ```bash
 # Generate one:
 openssl rand -hex 24
-# Example output: a3f7c2b1d4e8f09a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
 ```
 
 ### 1.5 Run standalone (test first)
@@ -81,18 +81,18 @@ RELAY_TOKEN=your_token_here python3 ~/signal_relay.py &
 
 ### 1.6 Open firewall port 8766
 
-```bash
-sudo ufw allow 8766/tcp
-sudo ufw status
-```
+In AWS Console → EC2 → Security Groups, add inbound rule:
+- Type: Custom TCP
+- Port: 8766
+- Source: 0.0.0.0/0 (or restrict to your home IP)
 
 ### 1.7 Test it
 
 ```bash
-curl -X POST http://13.58.219.0:8766/send-signal \
+curl -X POST http://34.208.73.189:8766/send-signal \
   -H "Content-Type: application/json" \
   -H "X-Relay-Token: your_token_here" \
-  -d '{"message": "✅ Test from task tracker"}'
+  -d '{"message": "Test from task tracker"}'
 # Expected: {"status": "sent"}
 ```
 
@@ -101,7 +101,7 @@ Check that the message appeared in the Favalon Signal group.
 ### 1.8 Make it persistent (systemd)
 
 ```bash
-cat > /etc/systemd/system/signal-relay.service << 'EOF'
+sudo cat > /etc/systemd/system/signal-relay.service << 'EOF'
 [Unit]
 Description=Signal Relay for Task Tracker
 After=network.target
@@ -124,69 +124,57 @@ sudo systemctl start signal-relay
 sudo systemctl status signal-relay
 ```
 
-### 1.9 (Optional) Integrate into existing household-agent
-
-Instead of running standalone, add to your existing Flask app:
-
-```python
-from signal_relay import relay_bp
-app.register_blueprint(relay_bp)
-```
-
-Then skip the separate service above.
-
 ---
 
-## Part 2 — Raspberry Pi Server
+## Part 2 — EC2 Task Tracker Server
 
-### 2.1 Give the Pi a static IP
-
-On your router (or via Pi config), assign a fixed IP to the Pi.
-Write it down — you'll need it for ESPHome configs.
-
-Example: `192.168.1.50`
-
-### 2.2 Copy server files to Pi
+### 2.1 Copy server files to EC2
 
 ```bash
-# From your laptop:
-rsync -av task-tracker/server/ pi@192.168.1.50:~/task-tracker/server/
+scp -i ~/.ssh/the-pem-key.pem \
+  task-tracker/server/server.py \
+  task-tracker/server/requirements.txt \
+  ubuntu@34.208.73.189:~/task-tracker/
 ```
 
-### 2.3 Set up Python virtualenv
+### 2.2 Set up Python virtualenv
 
 ```bash
-ssh pi@192.168.1.50
+ssh -i ~/.ssh/the-pem-key.pem ubuntu@34.208.73.189
 
-cd ~/task-tracker/server
+cd ~/task-tracker
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 deactivate
 ```
 
-### 2.4 Create state directory
+### 2.3 Configure the systemd service
 
 ```bash
-sudo mkdir -p /var/lib/task-tracker
-sudo chown pi:pi /var/lib/task-tracker
-```
+sudo cat > /etc/systemd/system/task-tracker.service << 'EOF'
+[Unit]
+Description=Avalon Task Tracker Server
+After=network-online.target
+Wants=network-online.target
 
-### 2.5 Configure the systemd service
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/task-tracker
+Environment="STATE_FILE=/home/ubuntu/task-tracker/state.json"
+Environment="EC2_RELAY_URL=http://127.0.0.1:8766/send-signal"
+Environment="RELAY_TOKEN=REPLACE_WITH_YOUR_TOKEN"
+ExecStart=/home/ubuntu/task-tracker/venv/bin/python server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=task-tracker
 
-Edit `task-tracker.service` — replace the two `CHANGE_ME` values:
-
-```ini
-Environment="RELAY_TOKEN=your_token_here"   # same token as EC2
-```
-
-The `EC2_RELAY_URL` is already set to `http://13.58.219.0:8766/send-signal`.
-
-### 2.6 Install and start the service
-
-```bash
-# Copy from Pi home dir to systemd
-sudo cp ~/task-tracker/server/task-tracker.service /etc/systemd/system/
+[Install]
+WantedBy=multi-user.target
+EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable task-tracker
@@ -194,24 +182,26 @@ sudo systemctl start task-tracker
 sudo systemctl status task-tracker
 ```
 
-### 2.7 Verify the server
+Note: `EC2_RELAY_URL` uses `127.0.0.1` since both services run on the same EC2 instance.
+
+### 2.4 Verify the server
 
 ```bash
-# From any device on the local network:
-curl http://192.168.1.50:8765/health
-# Expected: {"status": "ok", "date": "2026-03-05"}
+# From any device:
+curl http://34.208.73.189:8765/health
+# Expected: {"status": "ok", "date": "2026-03-11"}
 
-curl http://192.168.1.50:8765/state
+curl http://34.208.73.189:8765/state
 # Expected: JSON with all tasks false, active_window true/false depending on time
 
 # Simulate a button press:
-curl -X POST http://192.168.1.50:8765/press \
+curl -X POST http://34.208.73.189:8765/press \
   -H "Content-Type: application/json" \
   -d '{"owner": "ryker", "task": "laundry"}'
 # Expected: {"status": "ok"} or {"status": "outside_window"}
 ```
 
-### 2.8 Watch logs
+### 2.5 Watch logs
 
 ```bash
 sudo journalctl -u task-tracker -f
@@ -231,15 +221,15 @@ cp secrets.yaml.template secrets.yaml
 Edit `secrets.yaml`:
 
 ```yaml
-wifi_ssid: "YourActualSSID"
-wifi_password: "YourActualPassword"
+wifi_ssid: "Avalon"
+wifi_password: "YourWiFiPassword"
 api_encryption_key: "$(openssl rand -base64 32)"
 ota_password: "choose_something"
-pi_ip: "192.168.1.50"       # ← your Pi's static IP
-relay_token: "your_token"   # ← not used by buttons directly, just for reference
+pi_ip: "34.208.73.189"
+relay_token: "your_token"
 ```
 
-**Never commit secrets.yaml.** It is gitignored by convention (add it if needed).
+**Never commit secrets.yaml.** It is in `.gitignore`.
 
 ---
 
@@ -251,7 +241,6 @@ Flash each button one at a time. Label each board before flashing.
 
 ```bash
 pip install esphome
-# or use the ESPHome Dashboard: https://dashboard.esphome.io
 ```
 
 ### 4.2 Flash each button
@@ -262,54 +251,44 @@ Connect the XIAO ESP32-C6 via USB-C. Then for each button yaml:
 cd task-tracker/esphome
 
 # First flash (wired):
-esphome run button-ryker-laundry.yaml
+esphome run button-ryker-laundry.yaml --device /dev/cu.usbmodem*
 
 # Subsequent flashes (OTA, once on WiFi):
-esphome run button-ryker-laundry.yaml --device 192.168.1.XXX
+esphome upload button-ryker-laundry.yaml --device button-ryker-laundry.local
 ```
 
-Repeat for all 9 buttons:
+Repeat for all 7 buttons:
 - button-ryker-laundry
 - button-ryker-teeth
 - button-ryker-plates
 - button-ryker-pills
-- button-ryker-flute     ← Wednesday only (server handles rejection)
 - button-logan-laundry
 - button-logan-teeth
 - button-logan-plates
-- button-logan-trumpet   ← Wednesday only
 
 ### 4.3 Test each button
 
-After flashing, press the physical button. Watch the Pi logs:
+After flashing, press the physical button. Watch the EC2 logs:
 
 ```bash
-sudo journalctl -u task-tracker -f
+ssh -i ~/.ssh/the-pem-key.pem ubuntu@34.208.73.189 \
+  "sudo journalctl -u task-tracker -f"
 ```
 
 You should see: `Recorded: ryker / laundry`
 
-The button should flash green briefly on success.
+The button should play two clicks on success.
 
 **Outside 6–9:30 AM window:** The server returns `outside_window` and the
-button flashes double-red. This is expected — press during the window to
-confirm `ok`.
-
-**Non-Wednesday for flute/trumpet:** Server returns `not_today`. Button
-flashes double-red. Expected.
+button plays three quick clicks. This is expected.
 
 ---
 
 ## Part 5 — Flash the Display (Waveshare 7.5" V2)
 
-### 5.1 Update the Pi IP in display-front-door.yaml
+### 5.1 Verify pi_ip in secrets.yaml
 
-Open `esphome/display-front-door.yaml` and update:
-
-```yaml
-substitutions:
-  pi_ip: "192.168.1.50"   # ← your actual Pi IP
-```
+The display config references `!secret pi_ip` which should be `34.208.73.189`.
 
 ### 5.2 Flash the display board
 
@@ -320,25 +299,24 @@ cd task-tracker/esphome
 esphome run display-front-door.yaml
 ```
 
+For OTA updates:
+```bash
+esphome upload display-front-door.yaml --device display-front-door.local
+```
+
 ### 5.3 Verify display behavior
 
 **During active window (6:00–9:30 AM):**
-- Left column: Ryker's tasks with ○ (pending) or ✓ (done)
+- Left column: Ryker's tasks with ( ) (pending) or [X] (done)
 - Right column: Logan's tasks
-- Flute/Trumpet show "-" on non-Wednesdays
 
 **Outside active window:**
 - Shows "Good morning! / Tasks open 6:00 – 9:30 AM"
 
 **Both kids done:**
-- Shows "All done! / Ryker ✓  |  Logan ✓"
+- Shows "All done! / Ryker [X]  |  Logan [X]"
 
-The display refreshes every ~5 seconds when state changes.
-
-> **Note on e-ink refresh rate:** Full refreshes on 7.5" panels take ~3-4
-> seconds and flash briefly. This is normal. The display will not flicker
-> unnecessarily — it only calls `epaper.update()` after a new HTTP response.
-> Consider adding a state-change check in the lambda if flicker is bothersome.
+The display polls the server every 60 seconds.
 
 ---
 
@@ -349,25 +327,19 @@ The system sends **one Signal message per day**, at 9:30 AM Pacific.
 ### Format
 
 ```
-✅ Ryker done | ✅ Logan done
-✅ Ryker done | ⚠️ Logan missed: teeth, plates
-⚠️ Ryker missed: pills | ⚠️ Logan missed: teeth, plates
+Ryker done | Logan done
+Ryker done | Logan missed: teeth, plates
+Ryker missed: pills | Logan missed: teeth, plates
 ```
 
-### Force a test (manually trigger the 9:30 job)
-
-On the Pi, use a quick Python one-liner:
+### Force a test
 
 ```bash
-curl -X POST http://192.168.1.50:8765/press \
-  -H "Content-Type: application/json" \
-  -d '{"owner": "ryker", "task": "laundry"}'
-
-# Then temporarily set state.summary_sent = false and call the relay directly:
-curl -X POST http://13.58.219.0:8766/send-signal \
+# Send a test message directly through the relay:
+curl -X POST http://34.208.73.189:8766/send-signal \
   -H "Content-Type: application/json" \
   -H "X-Relay-Token: your_token_here" \
-  -d '{"message": "✅ Ryker done | ⚠️ Logan missed: teeth, plates"}'
+  -d '{"message": "Ryker done | Logan missed: teeth, plates"}'
 ```
 
 ---
@@ -378,14 +350,14 @@ The 3:00 AM reset wipes all task state. To verify without waiting:
 
 ```bash
 # Check current state
-curl http://192.168.1.50:8765/state | python3 -m json.tool
+curl http://34.208.73.189:8765/state | python3 -m json.tool
 
-# Manually wipe state (Pi):
-echo '{}' > /var/lib/task-tracker/state.json
-sudo systemctl restart task-tracker
+# Manually wipe state (on EC2):
+ssh -i ~/.ssh/the-pem-key.pem ubuntu@34.208.73.189 \
+  "echo '{}' > ~/task-tracker/state.json && sudo systemctl restart task-tracker"
 
 # State should reload fresh for today
-curl http://192.168.1.50:8765/state | python3 -m json.tool
+curl http://34.208.73.189:8765/state | python3 -m json.tool
 ```
 
 ---
@@ -394,16 +366,31 @@ curl http://192.168.1.50:8765/state | python3 -m json.tool
 
 | Symptom | Check |
 |---|---|
-| Button flashes double-red always | Is it outside 6–9:30 AM window? Check Pi time: `date` |
-| Button flashes nothing | Check WiFi — button may not be reaching Pi |
-| Display shows stale data | Check Pi server is running: `systemctl status task-tracker` |
-| Display shows "Good morning!" during active hours | Pi server may be down or unreachable |
-| No Signal message at 9:30 | Check Pi logs for relay errors; verify EC2 relay is running |
-| Signal relay returns 401 | Token mismatch — verify same RELAY_TOKEN on both Pi and EC2 |
+| Button plays three clicks always | Is it outside 6–9:30 AM window? Check EC2 server time |
+| Button plays nothing | Check WiFi — button may not be reaching server |
+| Display shows stale data | Check EC2 server is running: `curl http://34.208.73.189:8765/health` |
+| Display shows "Good morning!" during active hours | Server may be down or display can't reach EC2 |
+| No Signal message at 9:30 | Check server logs for relay errors; verify signal relay is running |
+| Signal relay returns 401 | Token mismatch — verify same RELAY_TOKEN on server and relay |
 | signal-cli not found | Update SIGNAL_CLI path in signal_relay.py or env var |
 | State resets unexpectedly | Corrupt state.json — server auto-recovers on restart |
+| HTTP requests from buttons fail silently | Ensure `verify_ssl: false` is in `.base-button.yaml` http_request config |
 
 ---
+
+## Infrastructure Reference
+
+```
+EC2 Instance: 34.208.73.189
+  SSH: ssh -i ~/.ssh/the-pem-key.pem ubuntu@34.208.73.189
+  Services:
+    task-tracker (port 8765) — Flask server, systemd
+    signal-relay (port 8766) — signal-cli relay, systemd
+  Security group: ports 22, 8765, 8766 open
+
+WiFi: Avalon (home network)
+  Buttons and display connect via WiFi, POST/GET to EC2 over internet
+```
 
 ## File Reference
 
@@ -412,16 +399,16 @@ task-tracker/
 ├── esphome/
 │   ├── secrets.yaml.template   ← copy → secrets.yaml, fill in values
 │   ├── .base-common.yaml       ← WiFi/API/OTA shared config
-│   ├── .base-button.yaml       ← button behavior (deep sleep, HTTP, LED)
+│   ├── .base-button.yaml       ← button behavior (HTTP POST, buzzer feedback)
 │   ├── .base-display.yaml      ← display SPI/fonts/polling base
-│   ├── button-*.yaml           ← one per physical button (9 total)
+│   ├── button-*.yaml           ← one per physical button (7 total)
 │   └── display-front-door.yaml ← e-ink display config + render lambda
 ├── server/
-│   ├── server.py               ← Flask Pi server
+│   ├── server.py               ← Flask server (runs on EC2)
 │   ├── requirements.txt        ← pip deps
-│   └── task-tracker.service    ← systemd unit
+│   └── task-tracker.service    ← systemd unit (reference — actual is on EC2)
 ├── ec2/
-│   └── signal_relay.py         ← Signal relay Flask app/blueprint
+│   └── signal_relay.py         ← Signal relay Flask app
 └── docs/
-    └── 07-deployment.md        ← this file
+    └── *.md                    ← documentation
 ```

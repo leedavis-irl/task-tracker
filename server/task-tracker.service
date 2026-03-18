@@ -1,5 +1,5 @@
 # task-tracker.service
-# systemd unit for the Avalon Task Tracker Pi server.
+# systemd unit for the Avalon Task Tracker server on EC2.
 #
 # Install:
 #   sudo cp task-tracker.service /etc/systemd/system/
@@ -14,22 +14,17 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/task-tracker/server
+User=ubuntu
+WorkingDirectory=/home/ubuntu/task-tracker
 
-# TODO: replace CHANGE_ME values with real secrets, or use an EnvironmentFile
-Environment="EC2_RELAY_URL=http://13.58.219.0:8766/send-signal"
+Environment="EC2_RELAY_URL=http://127.0.0.1:8766/send-signal"
 Environment="RELAY_TOKEN=CHANGE_ME_shared_secret"
-Environment="STATE_FILE=/var/lib/task-tracker/state.json"
+Environment="STATE_FILE=/home/ubuntu/task-tracker/state.json"
 
-ExecStart=/home/pi/task-tracker/venv/bin/python server.py
+ExecStart=/home/ubuntu/task-tracker/venv/bin/python server.py
 
 Restart=always
 RestartSec=5
-
-# Ensure state dir exists with correct ownership
-ExecStartPre=/bin/mkdir -p /var/lib/task-tracker
-ExecStartPre=/bin/chown pi:pi /var/lib/task-tracker
 
 StandardOutput=journal
 StandardError=journal

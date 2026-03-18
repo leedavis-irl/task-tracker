@@ -108,7 +108,7 @@ Candidate icons (finalize with kids):
 ### Color Coding
 Since buttons are placed at task locations (not grouped by kid), and both kids do the same tasks, there are two approaches:
 
-**Option A: Shared buttons** — one button per task location, either kid can press it, system tracks who via HA logic (e.g., alternating presses, or a "who are you" toggle). Fewer buttons, simpler install.
+**Option A: Shared buttons** — one button per task location, either kid can press it, system tracks who via server logic (e.g., alternating presses, or a "who are you" toggle). Fewer buttons, simpler install.
 
 **Option B: Paired buttons** — two buttons per task location, one per kid, different colors. More buttons (18 instead of 9), but zero ambiguity. Color per kid (e.g., Ryker = blue, Logan = green).
 

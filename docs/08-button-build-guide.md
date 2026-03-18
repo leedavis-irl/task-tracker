@@ -287,7 +287,7 @@ wifi_ssid: "YourNetwork"
 wifi_password: "YourPassword"
 api_encryption_key: "base64-encoded-key"
 ota_password: "your-ota-password"
-pi_ip: "192.168.1.232"
+pi_ip: "34.208.73.189"
 ```
 
 ---
@@ -315,8 +315,6 @@ Build in this order. Test each one fully before moving on.
 5. **Ryker — Laundry**
 6. **Logan — Laundry**
 7. **Ryker — Pills**
-8. **Ryker — Flute** *(Wednesday only)*
-9. **Logan — Trumpet** *(Wednesday only)*
 
 ---
 
@@ -349,4 +347,4 @@ See separate guide once enclosure design is finalized. The display (Waveshare 7.
 
 ---
 
-*Last updated: 2026-03-08*
+*Last updated: 2026-03-11*

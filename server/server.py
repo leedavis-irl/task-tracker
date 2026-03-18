@@ -1,13 +1,13 @@
 """
-server.py — Avalon Task Tracker Pi Server
-==========================================
-Flask server running on the Raspberry Pi.
-  * Receives button presses from ESPHome devices
-  * Serves current state to the e-ink display
+server.py — Avalon Task Tracker Server
+=======================================
+Flask server running on EC2 (34.208.73.189).
+  * Receives button presses from ESPHome devices via HTTP POST
+  * Serves current state to the e-ink display via HTTP GET
   * Sends a single daily 9:30 AM Signal summary to the Favalon group
-  * Resets state at 3:00 AM
+  * Resets state at 3:00 AM Pacific
 
-Configuration — edit the TODO lines below, or set env vars.
+Configuration — set env vars or edit defaults below.
 """
 
 import json
@@ -17,6 +17,7 @@ import threading
 import time
 from datetime import datetime, date
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -24,10 +25,8 @@ from flask import Flask, jsonify, request
 
 # -- Configuration ------------------------------------------------------------
 
-# TODO: set EC2_RELAY_URL to your EC2 instance's Signal relay endpoint
-EC2_RELAY_URL = os.environ.get("EC2_RELAY_URL", "http://13.58.219.0:8766/send-signal")
+EC2_RELAY_URL = os.environ.get("EC2_RELAY_URL", "http://127.0.0.1:8766/send-signal")
 
-# TODO: set RELAY_TOKEN to your shared secret (must match signal_relay.py)
 RELAY_TOKEN = os.environ.get("RELAY_TOKEN", "CHANGE_ME_shared_secret")
 
 # State file location — directory must exist (created below if missing)
@@ -37,6 +36,8 @@ STATE_FILE = Path(os.environ.get("STATE_FILE", "/var/lib/task-tracker/state.json
 WINDOW_START = (6, 0)    # (hour, minute)
 WINDOW_END   = (9, 30)
 
+PACIFIC = ZoneInfo("America/Los_Angeles")
+
 # -- Task definitions ---------------------------------------------------------
 
 # Tasks that apply every day
@@ -45,10 +46,10 @@ DAILY_TASKS = {
     "logan": ["laundry", "teeth", "plates"],
 }
 
-# Tasks that apply on Wednesdays only (weekday index 2)
+# Tasks that apply on specific days only (currently none active)
 WEDNESDAY_TASKS = {
-    "ryker": ["flute"],
-    "logan": ["trumpet"],
+    "ryker": [],
+    "logan": [],
 }
 
 VALID_OWNERS = list(DAILY_TASKS.keys())
@@ -57,14 +58,14 @@ VALID_OWNERS = list(DAILY_TASKS.keys())
 def tasks_for_today(owner: str) -> list[str]:
     """Return the list of applicable task names for the given owner today."""
     tasks = list(DAILY_TASKS.get(owner, []))
-    if datetime.now().weekday() == 2:  # Wednesday
+    if datetime.now(PACIFIC).weekday() == 2:  # Wednesday
         tasks += WEDNESDAY_TASKS.get(owner, [])
     return tasks
 
 
 def wednesday_tasks_today() -> dict[str, list[str]]:
     """Return Wednesday-only tasks per owner if today is Wednesday, else empty lists."""
-    if datetime.now().weekday() == 2:
+    if datetime.now(PACIFIC).weekday() == 2:
         return {owner: list(t) for owner, t in WEDNESDAY_TASKS.items()}
     return {owner: [] for owner in VALID_OWNERS}
 
@@ -117,7 +118,7 @@ def is_done(state: dict, owner: str) -> bool:
 
 
 def is_active_window() -> bool:
-    now = datetime.now()
+    now = datetime.now(PACIFIC)
     start = now.replace(hour=WINDOW_START[0], minute=WINDOW_START[1], second=0, microsecond=0)
     end   = now.replace(hour=WINDOW_END[0],   minute=WINDOW_END[1],   second=0, microsecond=0)
     return start <= now <= end
@@ -255,15 +256,11 @@ def get_state():
             "ryker_teeth":       tasks.get("ryker", {}).get("teeth",   False),
             "ryker_plates":      tasks.get("ryker", {}).get("plates",  False),
             "ryker_pills":       tasks.get("ryker", {}).get("pills",   False),
-            "ryker_flute":       tasks.get("ryker", {}).get("flute",   False),
-            "ryker_flute_today": "flute" in tasks.get("ryker", {}),
             "ryker_done":        is_done(state, "ryker"),
 
             "logan_laundry":      tasks.get("logan", {}).get("laundry",  False),
             "logan_teeth":        tasks.get("logan", {}).get("teeth",    False),
             "logan_plates":       tasks.get("logan", {}).get("plates",   False),
-            "logan_trumpet":      tasks.get("logan", {}).get("trumpet",  False),
-            "logan_trumpet_today": "trumpet" in tasks.get("logan", {}),
             "logan_done":         is_done(state, "logan"),
         }
 

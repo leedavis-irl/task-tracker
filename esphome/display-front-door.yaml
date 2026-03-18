@@ -5,7 +5,7 @@
 substitutions:
   device_name: display-front-door
   # TODO: set pi_ip to your Raspberry Pi's static IP address
-  pi_ip: "192.168.1.XXX"
+  pi_ip: !secret pi_ip
 
 esphome:
   name: "${device_name}"
@@ -30,18 +30,18 @@ spi:
 
 # ── Fonts ────────────────────────────────────────────────────────────────────
 font:
-  - file: "gfonts://Roboto"
+  - file: "gfonts://Noto Sans"
     id: font_title
     size: 40
-    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !|✓○⚠"
-  - file: "gfonts://Roboto"
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !|[]()>"
+  - file: "gfonts://Noto Sans"
     id: font_task
     size: 28
-    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ✓○-/"
-  - file: "gfonts://Roboto"
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 []()-/"
+  - file: "gfonts://Noto Sans"
     id: font_small
     size: 22
-    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !:.,"
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !:.,|-[]"
 
 # ── State globals ─────────────────────────────────────────────────────────────
 # Booleans for each task completion, plus an active-window flag.
@@ -73,14 +73,6 @@ globals:
     type: bool
     restore_value: false
     initial_value: "false"
-  - id: ryker_flute
-    type: bool
-    restore_value: false
-    initial_value: "false"
-  - id: ryker_flute_today
-    type: bool
-    restore_value: false
-    initial_value: "false"
   - id: ryker_done
     type: bool
     restore_value: false
@@ -99,14 +91,6 @@ globals:
     type: bool
     restore_value: false
     initial_value: "false"
-  - id: logan_trumpet
-    type: bool
-    restore_value: false
-    initial_value: "false"
-  - id: logan_trumpet_today
-    type: bool
-    restore_value: false
-    initial_value: "false"
   - id: logan_done
     type: bool
     restore_value: false
@@ -116,6 +100,7 @@ globals:
 http_request:
   useragent: "ESPHome Display"
   timeout: 5s
+  verify_ssl: false
 
 # ── Polling interval ──────────────────────────────────────────────────────────
 interval:
@@ -128,18 +113,20 @@ script:
   - id: poll_state
     mode: single
     then:
-      - http_request.get:
+      - http_request.send:
+          method: GET
+          capture_response: true
+          max_response_buffer_size: 512
           url: "http://${pi_ip}:8765/state"
           on_response:
             then:
               - lambda: |-
                   if (response->status_code != 200) return;
+                  if (body.size() == 0) return;
 
-                  std::string body(data.begin(), data.end());
-
-                  // Helper: find "key": true/false in flat JSON
+                  // Helper: find "key":true/false in flat JSON (compact format, no spaces)
                   auto get_bool = [&](const std::string& key) -> bool {
-                    std::string search = "\"" + key + "\": ";
+                    std::string search = "\"" + key + "\":";
                     auto pos = body.find(search);
                     if (pos == std::string::npos) return false;
                     pos += search.size();
@@ -153,19 +140,14 @@ script:
                   id(ryker_teeth)        = get_bool("ryker_teeth");
                   id(ryker_plates)       = get_bool("ryker_plates");
                   id(ryker_pills)        = get_bool("ryker_pills");
-                  id(ryker_flute)        = get_bool("ryker_flute");
-                  id(ryker_flute_today)  = get_bool("ryker_flute_today");
                   id(ryker_done)         = get_bool("ryker_done");
 
                   id(logan_laundry)      = get_bool("logan_laundry");
                   id(logan_teeth)        = get_bool("logan_teeth");
                   id(logan_plates)       = get_bool("logan_plates");
-                  id(logan_trumpet)      = get_bool("logan_trumpet");
-                  id(logan_trumpet_today)= get_bool("logan_trumpet_today");
                   id(logan_done)         = get_bool("logan_done");
 
-                  // Trigger a display refresh
-                  id(epaper).update();
+              - component.update: epaper
 
 # ── E-ink display ─────────────────────────────────────────────────────────────
 display:
@@ -197,9 +179,9 @@ display:
       // ── Outside active window ──────────────────────────────────────────────
       if (!id(active_window)) {
         it.printf(W/2, H/2 - 20, id(font_title), COLOR_OFF, TextAlign::CENTER,
-                  "Good morning!");
+                  "Task Tracker");
         it.printf(W/2, H/2 + 30, id(font_small), COLOR_OFF, TextAlign::CENTER,
-                  "Tasks open 6:00 – 9:30 AM");
+                  "Tasks open 6:00 - 9:30 AM");
         return;
       }
 
@@ -208,7 +190,7 @@ display:
         it.printf(W/2, H/2 - 30, id(font_title), COLOR_OFF, TextAlign::CENTER,
                   "All done!");
         it.printf(W/2, H/2 + 30, id(font_small), COLOR_OFF, TextAlign::CENTER,
-                  "Ryker ✓  |  Logan ✓");
+                  "Ryker [X]  |  Logan [X]");
         return;
       }
 
@@ -218,16 +200,16 @@ display:
 
       // ── Column headers ─────────────────────────────────────────────────────
       it.printf(MID/2, TITLE_Y, id(font_title), COLOR_OFF, TextAlign::CENTER,
-                id(ryker_done) ? "Ryker ✓" : "Ryker");
+                id(ryker_done) ? "Ryker [X]" : "Ryker");
       it.printf(MID + MID/2, TITLE_Y, id(font_title), COLOR_OFF, TextAlign::CENTER,
-                id(logan_done) ? "Logan ✓" : "Logan");
+                id(logan_done) ? "Logan [X]" : "Logan");
 
       // ── Helper macros (lambdas in C++) ─────────────────────────────────────
       // Draw one task row in a column.
       // col_x = left edge of column content area
       auto draw_task = [&](int col_x, int row, const char* label, bool done, bool applicable) {
         int y = TASK_START_Y + row * TASK_STEP;
-        const char* marker = applicable ? (done ? "✓" : "○") : "-";
+        const char* marker = applicable ? (done ? "[X]" : "( )") : "-";
         it.printf(col_x, y, id(font_task), COLOR_OFF, "%s %s", marker, label);
       };
 
@@ -237,11 +219,9 @@ display:
       draw_task(COL_PAD,         row++, "Teeth",   id(ryker_teeth),   true);
       draw_task(COL_PAD,         row++, "Plates",  id(ryker_plates),  true);
       draw_task(COL_PAD,         row++, "Pills",   id(ryker_pills),   true);
-      draw_task(COL_PAD,         row++, "Flute",   id(ryker_flute),   id(ryker_flute_today));
 
       // ── Logan tasks ────────────────────────────────────────────────────────
       row = 0;
       draw_task(MID + COL_PAD,   row++, "Laundry", id(logan_laundry), true);
       draw_task(MID + COL_PAD,   row++, "Teeth",   id(logan_teeth),   true);
       draw_task(MID + COL_PAD,   row++, "Plates",  id(logan_plates),  true);
-      draw_task(MID + COL_PAD,   row++, "Trumpet", id(logan_trumpet), id(logan_trumpet_today));
