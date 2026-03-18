@@ -28,10 +28,10 @@ from flask import Flask, jsonify, request, Blueprint
 RELAY_TOKEN = os.environ.get("RELAY_TOKEN", "CHANGE_ME_shared_secret")
 
 # Signal account sending messages
-SIGNAL_ACCOUNT = "+17074748930"
+SIGNAL_ACCOUNT = os.environ.get("SIGNAL_ACCOUNT", "+15550001234")
 
 # Favalon Signal group ID
-SIGNAL_GROUP_ID = "B0rtgi79BwsuD2OEFO6CxnVhGG4lHNyEzFWFClsas/4="
+SIGNAL_GROUP_ID = os.environ.get("SIGNAL_GROUP_ID", "your-group-id-here")
 
 # signal-cli binary path
 SIGNAL_CLI = os.environ.get("SIGNAL_CLI", "/usr/local/bin/signal-cli")

@@ -1,7 +1,7 @@
 """
 server.py — Avalon Task Tracker Server
 =======================================
-Flask server running on EC2 (34.208.73.189).
+Flask server running on EC2 (your EC2 instance).
   * Receives button presses from ESPHome devices via HTTP POST
   * Serves current state to the e-ink display via HTTP GET
   * Sends a single daily 9:30 AM Signal summary to the Favalon group
